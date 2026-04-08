@@ -12,7 +12,7 @@ st.markdown("""
     .main { background-color: #f8f9fa; }
     .stMetric { background-color: #ffffff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
-    """, unsafe_allow_name_温暖=True)
+    """, unsafe_allow_html=True)
 
 st.title("🌏 Global Legacy & Retirement Planner")
 st.markdown("### Strategic Wealth Modeling for Cross-Border Families")
@@ -42,7 +42,7 @@ with st.sidebar:
 # --- MATH ENGINE ---
 def calculate_wealth():
     portfolio = liquid_assets
-    real_growth = 0.05  # 8% nominal - 3% inflation
+    real_growth = 0.05  # 5% real return
     ss_benefit = 85000
     data = []
     
@@ -57,12 +57,12 @@ def calculate_wealth():
             expenses = ca_mortgage + ca_living
             portfolio += (income - expenses)
         else:
-            # Retirement/China Phase
+            # Retirement Phase
             portfolio -= china_living
             if a >= 67:
                 portfolio += ss_benefit
                 
-        # Education Milestones (Assumes kids are 8 and 2 at user age 42)
+        # Education Milestones (Assumes kids are 8 and 2 at age 42)
         if (age + 10 <= a <= age + 13) or (age + 16 <= a <= age + 19):
             portfolio -= college_cost
             
@@ -78,7 +78,7 @@ df = calculate_wealth()
 # --- DASHBOARD LAYOUT ---
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Portfolio at Move (Age %s)" % move_age, f"${df[df['Age']==move_age]['Portfolio'].values[0]:,.0f}")
+    st.metric("Portfolio at Move", f"${df[df['Age']==move_age]['Portfolio'].values[0]:,.0f}")
 with col2:
     st.metric("Final Estate (Age 90)", f"${df.iloc[-1]['Portfolio']:,.0f}")
 with col3:
