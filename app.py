@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy Master 9.7")
+st.set_page_config(layout="wide", page_title="Legacy Master 9.8")
 
 # --- 1. SIDEBAR MODULES (LHS) ---
 sb = st.sidebar
@@ -99,53 +99,55 @@ for age in range(int(ca), int(ea) + 1):
     })
     
     res_cashflow.append({
-        "Age": age, "Salary_Income": inc_salary, "SS_Income": inc_ss, "Rent_NOI_Income": inc_noi,
-        "Lifestyle_Spend": exp_life, "Tuition_Spend": edu_cost, "Mortgage_Spend": exp_pmt,
-        "Net_Flow": total_inc + total_exp
+        "Age": age, "Salary": inc_salary, "SS": inc_ss, "Rent": inc_noi,
+        "Lifestyle": exp_life, "Tuition": edu_cost, "Mortgage": exp_pmt
     })
 
 # --- 3. OUTPUT & VISUALS ---
-st.title("🛡️ Legacy Master: Consolidated Audit v9.7")
+st.title("🛡️ Legacy Master: Executive Summary v9.8")
+
 df = pd.DataFrame(res)
 df_cf = pd.DataFrame(res_cashflow)
 
-# SECTION: SUMMARY METRICS
-st.subheader("📊 Financial Summary")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Current Net Worth", f"${df.iloc[0]['NW']:,.0f}")
-m2.metric("Retirement NW (Age {yr})", f"${df[df['Age']==yr]['NW'].values[0]:,.0f}")
-m3.metric("Final Estate Value", f"${df.iloc[-1]['NW']:,.0f}")
-m4.metric("Liquidity Status", "Healthy" if not fail_yr else "DEFICIT", delta="SAFE" if not fail_yr else f"Short {num_insolvent_yrs} Yrs", delta_color="inverse")
+# --- THE SUMMARY METRICS (RESTORED) ---
+st.markdown("### 📊 Financial Overview")
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Current Net Worth", f"${df.iloc[0]['NW']:,.0f}")
+c2.metric(f"NW at Retire (Age {yr})", f"${df[df['Age']==yr]['NW'].values[0]:,.0f}")
+c3.metric("Final Estate (Age 95)", f"${df.iloc[-1]['NW']:,.0f}")
+status = "HEALTHY" if not fail_yr else "DEFICIT"
+c4.metric("Liquidity Status", status, delta=None if not fail_yr else f"-{num_insolvent_yrs} Yrs", delta_color="inverse")
 
 if fail_yr:
-    st.error(f"🛑 **Zero Liquidity Warning:** Your liquid reserves hit zero in {fail_yr}.")
+    st.error(f"⚠️ **Cash Depletion Alert:** Liquid reserves hit zero in the year {fail_yr}.")
 
-# CHART 1: TOTAL NET WORTH (Original Bar Chart Request)
-st.subheader("Total Net Worth Growth")
+# --- THE ORIGINAL CHART (RESTORED TOTAL NW BAR CHART) ---
+st.markdown("### 📈 Total Wealth Projection")
 fig1 = go.Figure()
-fig1.add_trace(go.Bar(x=df["Age"], y=df["NW"], name="Total Wealth", marker_color="#0ea5e9"))
-fig1.update_layout(template="plotly_dark", height=400, yaxis_title="Total Assets ($)")
+fig1.add_trace(go.Bar(x=df["Age"], y=df["NW"], name="Total Net Worth", marker_color="#0ea5e9"))
+fig1.update_layout(template="plotly_dark", height=450, yaxis_title="Total Assets ($)", margin=dict(l=20, r=20, t=20, b=20))
 st.plotly_chart(fig1, use_container_width=True)
 
-# CHART 2: ASSET BREAKDOWN (Grouped Bar Chart)
-st.subheader("Asset Distribution")
+# --- ASSET DISTRIBUTION (GROUPED BARS) ---
+st.markdown("### 📂 Asset Portfolio Breakdown")
 fig2 = go.Figure()
 for col, clr in [("RE","#f59e0b"), ("401k","#8b5cf6"), ("Roth","#10b981"), ("Cash","#3b82f6")]:
     fig2.add_trace(go.Bar(x=df["Age"], y=df[col], name=col, marker_color=clr))
-fig2.update_layout(barmode='group', template="plotly_dark", height=450, yaxis_title="Wealth ($)")
+fig2.update_layout(barmode='group', template="plotly_dark", height=450, yaxis_title="Asset Value ($)")
 st.plotly_chart(fig2, use_container_width=True)
 
-# CHART 3: ANNUAL FLOW (Spending Peaks & Inflow)
-st.subheader("Annual Inflow vs. Spending Peaks")
+# --- ANNUAL FLOW (INCOME VS SPENDING PEAKS) ---
+st.markdown("### 💸 Annual Inflow vs. Spending Peaks")
 fig3 = go.Figure()
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Salary_Income"], name="Salary In", marker_color="#1e3a8a"))
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Rent_NOI_Income"], name="Rent In", marker_color="#1d4ed8"))
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["SS_Income"], name="SS In", marker_color="#3b82f6"))
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Lifestyle_Spend"], name="Lifestyle Out", marker_color="#991b1b"))
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Mortgage_Spend"], name="Mortgage Out", marker_color="#dc2626"))
-fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Tuition_Spend"], name="College Out", marker_color="#ef4444"))
+# Inflows
+for col, clr in [("Salary","#1e3a8a"), ("Rent","#1d4ed8"), ("SS","#3b82f6")]:
+    fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf[col], name=col, marker_color=clr))
+# Outflows
+for col, clr in [("Lifestyle","#991b1b"), ("Mortgage","#dc2626"), ("Tuition","#ef4444")]:
+    fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf[col], name=col, marker_color=clr))
+
 fig3.update_layout(barmode='relative', template="plotly_dark", height=450, yaxis_title="Annual Flow ($)")
 st.plotly_chart(fig3, use_container_width=True)
 
-with st.expander("🔎 VIEW ANNUAL LEDGER"):
+with st.expander("🔎 View Annual Audit Ledger"):
     st.dataframe(df.style.format("${:,.0f}"))
