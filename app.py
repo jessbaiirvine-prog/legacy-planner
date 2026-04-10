@@ -2,58 +2,100 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy Master 9.6")
+# --- 1. CORE CONFIG ---
+st.set_page_config(layout="wide", page_title="Legacy Master 9.7")
+st.title("✨ Legacy Master v9.7")
 
-# --- 1. SIDEBAR MODULES ---
+# --- 2. INPUTS (FLAT LIST FOR STABILITY) ---
 sb = st.sidebar
-sb.title("⚙️ Strategic Planning")
+sb.header("⚙️ Strategic Inputs")
 
-with sb.expander("🏠 RE INVESTMENT", expanded=True):
-    np = sb.number_input("Property Count", value=1)
-    plist = []
-    for i in range(int(np)):
-        st.markdown(f"**Property {i+1}**")
-        v = st.number_input("Current Value", value=950000.0, key=f"v{i}")
-        l = st.number_input("Loan Balance", value=700000.0, key=f"l{i}")
-        y = st.number_input("Year Purchased", value=2020, key=f"y{i}")
-        t = st.number_input("Loan Term (Yrs)", value=30, key=f"t{i}")
-        r = st.number_input("Int. Rate %", value=4.5, key=f"r{i}") / 100
-        a = st.number_input("Annual Appr %", value=3.0, key=f"a{i}") / 100
-        n = st.number_input("Monthly Net Rent", value=0.0, key=f"n{i}")
-        p = 0
-        if l > 0 and r > 0:
-            mi = r / 12
-            mt = t * 12
-            pw = (1 + mi)**mt
-            p = l * (mi * pw) / (pw - 1)
-        plist.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":p*12,"n":n*12})
+# Real Estate Defaults
+v1 = sb.number_input("Property 1 Value", value=1700000.0)
+l1 = sb.number_input("Property 1 Loan", value=0.0)
+n1 = sb.number_input("Property 1 Monthly Rent", value=4000.0)
+appr = sb.number_input("Annual Appr %", value=3.0) / 100
 
-with sb.expander("🏦 RETIREMENT", expanded=False):
-    v_d = st.number_input("401k (Pre-Tax)", value=1200000.0)
-    v_r = st.number_input("Roth/HSA", value=150000.0)
-    roi = st.number_input("Market ROI %", value=6.0) / 100
+# Portfolio Defaults
+v_401 = sb.number_input("401k Balance", value=1200000.0)
+v_roth = sb.number_input("Roth/HSA Balance", value=500000.0)
+roi = sb.number_input("Portfolio ROI %", value=6.0) / 100
 
-with sb.expander("🎓 KIDS TUITION", expanded=False):
-    nk = st.number_input("Number of Kids", value=2)
-    tui_yr = st.number_input("Annual Tuition per Kid", value=50000.0)
-    # Using specific ages for Aaron (8) and Alvin (3) logic
-    k_ages = []
-    for i in range(int(nk)):
-        k_ages.append(st.number_input(f"Child {i+1} College Start Age", value=52+(i*5)))
+# Cash Flow
+v_cash = sb.number_input("Checking/Savings", value=200000.0)
+h_inc = sb.number_input("Husband Net Salary", value=145000.0)
+y_inc = sb.number_input("Your Net Salary", value=110000.0)
 
-with sb.expander("💵 CASH & TIMELINE", expanded=False):
-    v_c = st.number_input("Current Savings", value=200000.0)
-    hp, yp = st.number_input("Husband Net", 145000.0), st.number_input("Your Net", 110000.0)
-    ca, yr, ea = st.number_input("Current Age", 42), st.number_input("Retire Age", 55), st.number_input("End Age", 95)
-    ew, er = st.number_input("Exp (Work)", 150000.0), st.number_input("Exp (Retire)", 120000.0)
+# Tuition
+tui = sb.number_input("Annual Tuition (per kid)", value=50000.0)
+k1_age = sb.number_input("Child 1 College Start Age", value=52)
+k2_age = sb.number_input("Child 2 College Start Age", value=57)
 
-# --- 2. MATH ENGINE ---
-res, cc, cd, cr, fyr = [], v_c, v_d, v_r, None
+# Timeline
+cur_age = sb.number_input("Current Age", value=42)
+ret_age = sb.number_input("Retirement Age", value=55)
+end_age = sb.number_input("Simulation End Age", value=95)
+exp_w = sb.number_input("Annual Exp (Working)", value=150000.0)
+exp_r = sb.number_input("Annual Exp (Retired)", value=120000.0)
 
-for age in range(int(ca), int(ea) + 1):
-    sim_yr = 2026 + (age - int(ca))
-    cc *= 1.02 # Cash stays at 2%
-    cd *= (1 + roi)
-    cr *= (1 + roi)
+# --- 3. MATH ENGINE ---
+data = []
+c_cash, c_401, c_roth = v_cash, v_401, v_roth
+fail_yr = None
+
+for a in range(int(cur_age), int(end_age) + 1):
+    yr = 2026 + (a - int(cur_age))
     
-    inc = (hp + yp) if age < yr else 85000
+    # Growth
+    c_cash *= 1.02 # Cash inflation
+    c_401 *= (1 + roi)
+    c_roth *= (1 + roi)
+    
+    # Active Income vs SS
+    inc = (h_inc + y_inc) if a < ret_age else 85000
+    exp = exp_w if a < ret_age else exp_r
+    
+    # Tuition Check
+    edu = 0
+    if k1_age <= a < k1_age + 4: edu += tui
+    if k2_age <= a < k2_age + 4: edu += tui
+    
+    # Simple RE Growth (1 Property for stability check)
+    h = yr - 2026
+    re_val = v1 * ((1 + appr) ** h)
+    re_noi = (n1 * 12) * ((1 + appr) ** h)
+    
+    # Net Flow
+    c_cash += (inc + re_noi - exp - edu)
+    
+    if c_cash < 0 and fail_yr is None:
+        fail_yr = yr
+        
+    data.append({
+        "Age": a, "Year": yr, "Cash": c_cash, 
+        "401k": c_401, "Roth": c_roth, "RE": re_val,
+        "NW": (c_cash + c_401 + c_roth + re_val)
+    })
+
+# --- 4. OUTPUT ---
+if data:
+    df = pd.DataFrame(data)
+    
+    if fail_yr:
+        st.warning(f"⚠️ Cash Deficit in {fail_yr}")
+
+    col1, col2 = st.columns(2)
+    col1.metric("Current NW", f"${df.iloc[0]['NW']:,.0f}")
+    col2.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
+
+    # Visual
+    fig = go.Figure()
+    for col, clr in [("RE","#f59e0b"),("401k","#8b5cf6"),("Roth","#10b981"),("Cash","#3b82f6")]:
+        fig.add_trace(go.Scatter(x=df["Age"], y=df[col], name=col, stackgroup='one', fillcolor=clr))
+    
+    fig.update_layout(template="plotly_dark", height=500)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.dataframe(df.style.format("${:,.0f}"))
+else:
+    st.error("No data produced. Check sidebar age settings.")
