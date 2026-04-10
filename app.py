@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy 8.4")
+st.set_page_config(layout="wide", page_title="Legacy 8.5")
 
 # --- 1. TOP DISPLAY SLOTS ---
 t_head = st.container()
@@ -14,7 +14,7 @@ sb.title("⚙️ Strategic Planning")
 
 # -- MODULE: RE INVESTMENT --
 with sb.expander("🏠 RE INVESTMENT", expanded=True):
-    n_p = st.number_input("Property Count", value=1)
+    n_p = st.number_input("Property Count", value=1, min_value=0)
     p_list = []
     for i in range(int(n_p)):
         st.markdown(f"**Property {i+1}**")
@@ -26,6 +26,7 @@ with sb.expander("🏠 RE INVESTMENT", expanded=True):
         a = st.number_input("Annual Appr %", value=3.0, key=f"a{i}") / 100
         n = st.number_input("Monthly Net Rent (NOI)", value=0.0, key=f"n{i}")
         
+        # Mortgage Calculation
         pmt = 0
         if l > 0 and r > 0:
             mi, mt = r/12, t*12
@@ -36,9 +37,9 @@ with sb.expander("🏠 RE INVESTMENT", expanded=True):
 
 # -- MODULE: RETIREMENT SAVINGS --
 with sb.expander("🏦 RETIREMENT SAVINGS", expanded=False):
-    v_401k = st.number_input("401k (Pre-Tax)", value=1200000.0)
-    v_roth_401 = st.number_input("Roth 401k", value=100000.0)
-    v_roth_ira = st.number_input("Roth IRA", value=200000.0)
+    v_401 = st.number_input("401k (Pre-Tax)", value=1200000.0)
+    v_r401 = st.number_input("Roth 401k", value=100000.0)
+    v_rira = st.number_input("Roth IRA", value=200000.0)
     v_hsa = st.number_input("HSA Balance", value=50000.0)
     m_roi = st.number_input("Portfolio Return %", value=6.0) / 100
 
@@ -50,7 +51,7 @@ with sb.expander("💵 CASH ASSETS", expanded=False):
 
 # -- MODULE: KIDS TUITION --
 with sb.expander("🎓 KIDS TUITION", expanded=False):
-    n_k = st.number_input("Number of Kids", value=2)
+    n_k = st.number_input("Number of Kids", value=2, min_value=0)
     tui = st.number_input("Tuition per Year", value=50000.0)
     k_s = [st.number_input(f"K{i+1} College Start Age", value=52+(i*6)) for i in range(int(n_k))]
 
@@ -65,6 +66,102 @@ with sb.expander("📅 TIMELINE & EXPENSES", expanded=False):
 
 # --- 3. MATH ENGINE ---
 results = []
-# Combined buckets for logic
-curr_cash = v_cash
-curr_def
+# Initialize working copies of our liquid buckets
+cur_c = v_cash
+cur_d = v_401
+cur_r = v_r401 + v_rira + v_hsa
+ruin_yr, ruin_msg = None, ""
+
+# Safety Range
+l_range = range(c_a, max(c_a + 1, e_a + 1))
+
+for age in l_range:
+    yr = 2026 + (age - c_a)
+    
+    # Growth
+    cur_c *= (1 + (m_roi * 0.2)) # Minimal growth for cash
+    cur_d *= (1 + m_roi)
+    cur_r *= (1 + m_roi)
+    
+    # Inflow (Salary / Social Security)
+    inc = (h_pay if age < h_r else 0) + (y_pay if age < y_r else 0)
+    if age >= 67: inc += 85000 
+    
+    # Outflow (Lifestyle / Kids)
+    exp = ex_r if (age >= y_r and age >= h_r) else ex_w
+    edu = sum(tui for s in k_s if s <= age < s + 4)
+    
+    re_eq, re_pmt, re_noi = 0, 0, 0
+    for p in p_list:
+        h = yr - p["y"]
+        if h < 0: continue
+        
+        val = p["v"] * ((1 + p["a"]) ** h)
+        noi = p["n"] * ((1 + p["a"]) ** h)
+        
+        if h >= p["t"]:
+            deb = 0
+        else:
+            mi, mt, dn = p["r"]/12, p["t"]*12, h*12
+            pm, pd = (1+mi)**mt, (1+mi)**dn
+            deb = p["l"] * (pm - pd) / (pm - 1)
+            re_pmt += p["p"]
+            
+        re_eq += (val - deb)
+        re_noi += noi
+
+    # Final Year Calculation
+    cur_c += (inc + re_noi - exp - edu - re_pmt)
+    
+    # Sustainability Check
+    if cur_c < 0 and ruin_yr is None:
+        ruin_yr = age
+        ruin_msg = f"In {yr} (Age {age}), cash reserves dropped to zero. Inflow no longer sustains the lifestyle."
+
+    nw = cur_c + cur_d + cur_r + re_eq
+    results.append({
+        "Age": age, "Year": yr, "Checking": cur_c, 
+        "Deferred": cur_d, "Roth_HSA": cur_r, 
+        "RE_Equity": re_eq, "NW": nw
+    })
+
+df = pd.DataFrame(results)
+
+# --- 4. OUTPUTS ---
+with t_head:
+    st.title("✨ Legacy Master v8.5")
+    if ruin_yr:
+        st.error(f"⚠️ **Sustainability Alert:** {ruin_msg}")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Current NW", f"${df.iloc[0]['NW']:,.0f}")
+    
+    r_df = df[df['Age'] == y_r]
+    rv = r_df['NW'].values[0] if not r_df.empty else 0
+    m2.metric("NW @ Retirement", f"${rv:,.0f}")
+    
+    m3.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
+    m4.metric("Status", "Solvent" if not ruin_yr else "Deficit")
+
+with t_chart:
+    fig = go.Figure()
+    # Categorized Bar Chart (Vertical)
+    cats = [
+        ("Checking", "#3b82f6"), ("Roth_HSA", "#10b981"), 
+        ("Deferred", "#8b5cf6"), ("RE_Equity", "#f59e0b")
+    ]
+    for col, clr in cats:
+        fig.add_trace(go.Bar(x=df["Age"], y=df[col], name=col, marker_color=clr))
+    
+    fig.update_layout(
+        barmode='stack', template="plotly_dark", height=450, 
+        margin=dict(t=10,b=10), legend=dict(orientation="h", y=1.1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# -- MODULE: ANNUAL LEDGER --
+with st.expander("📊 ANNUAL FINANCIAL LEDGER"):
+    st.dataframe(df.style.format({
+        "Checking": "${:,.0f}", "Deferred": "${:,.0f}", 
+        "Roth_HSA": "${:,.0f}", "RE_Equity": "${:,.0f}", "NetWorth": "${:,.0f}"
+    }))
