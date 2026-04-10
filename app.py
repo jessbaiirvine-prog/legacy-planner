@@ -2,98 +2,126 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Legacy Master 9.5")
 
-# --- 1. LHS MODULES ---
+# --- 1. SIDEBAR MODULES (LHS) ---
 sb = st.sidebar
 sb.title("⚙️ Strategic Planning")
 
 with sb.expander("🏠 RE INVESTMENT", expanded=True):
-    n_p = sb.number_input("Property Count", value=1)
-    p_list = []
-    for i in range(int(n_p)):
-        st.markdown(f"**Prop {i+1}**")
-        v = st.number_input("Value", value=1000000.0, key=f"v{i}")
-        l = st.number_input("Loan", value=700000.0, key=f"l{i}")
-        y = st.number_input("Year", value=2020, key=f"y{i}")
-        t = st.number_input("Term", value=30, key=f"t{i}")
-        r = st.number_input("Rate%", value=4.5, key=f"r{i}")/100
-        a = st.number_input("Appr%", value=3.0, key=f"a{i}")/100
-        n = st.number_input("NetRent", value=0.0, key=f"n{i}")
-        pmt = 0
+    np = sb.number_input("Property Count", value=1)
+    plist = []
+    for i in range(int(np)):
+        st.markdown(f"**Property {i+1}**")
+        v = st.number_input("Current Value", value=950000.0, key=f"v{i}")
+        l = st.number_input("Loan Balance", value=700000.0, key=f"l{i}")
+        y = st.number_input("Year Purchased", value=2020, key=f"y{i}")
+        t = st.number_input("Loan Term (Yrs)", value=30, key=f"t{i}")
+        r = st.number_input("Int. Rate %", value=4.5, key=f"r{i}") / 100
+        a = st.number_input("Annual Appr %", value=3.0, key=f"a{i}") / 100
+        n = st.number_input("Monthly Net Rent", value=0.0, key=f"n{i}")
+        
+        # Monthly Mortgage Calculation
+        p = 0
         if l > 0 and r > 0:
-            mi, mt = r/12, t*12
-            pw = (1+mi)**mt
-            mp = l*(mi*pw)/(pw-1)
-            pmt = mp*12
-        p_list.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":pmt,"n":n*12})
+            mi = r / 12
+            mt = t * 12
+            pw = (1 + mi)**mt
+            p = l * (mi * pw) / (pw - 1)
+        plist.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":p*12,"n":n*12})
 
 with sb.expander("🏦 RETIREMENT", expanded=False):
-    v_pre = st.number_input("401k Pre", value=1200000.0)
-    v_rth = st.number_input("Roth/HSA", value=150000.0)
-    m_roi = st.number_input("ROI%", value=6.0)/100
+    v_d = st.number_input("401k (Deferred)", value=1200000.0)
+    v_r = st.number_input("Roth/HSA (Tax-Free)", value=150000.0)
+    roi = st.number_input("Market ROI %", value=6.0) / 100
 
 with sb.expander("💵 CASH ASSETS", expanded=False):
-    v_csh = st.number_input("Cash", value=200000.0)
-    h_pay = st.number_input("Husband Net", value=145000.0)
-    y_pay = st.number_input("Your Net", value=110000.0)
+    v_c = st.number_input("Current Savings", value=200000.0)
+    hp = st.number_input("Husband Net Salary", value=145000.0)
+    yp = st.number_input("Your Net Salary", value=110000.0)
 
-with sb.expander("🎓 KIDS TUITION", expanded=False):
-    n_k = st.number_input("Kids", value=2)
-    tui = st.number_input("Annual Tui", value=50000.0)
-    k_s = [st.number_input(f"K{i+1} Age", value=52+(i*6)) for i in range(int(n_k))]
+with sb.expander("📅 TIMELINE & EXPENSES", expanded=False):
+    ca = st.number_input("Current Age", 42)
+    yr = st.number_input("Retire Age", 55)
+    ea = st.number_input("End Age", 95)
+    ew = st.number_input("Annual Exp (Work)", 150000.0)
+    er = st.number_input("Annual Exp (Retire)", 120000.0)
 
-with sb.expander("📅 TIMELINE", expanded=False):
-    c_a = st.number_input("Age", value=42)
-    y_r = st.number_input("Retire", value=55)
-    e_a = st.number_input("End", value=95)
-    ex_w = st.number_input("Exp Work", value=150000.0)
-    ex_r = st.number_input("Exp Ret", value=120000.0)
-
-# --- 2. MATH ---
+# --- 2. MATH ENGINE ---
 res = []
-cc, cd, cr = v_csh, v_pre, v_rth
+cc, cd, cr = v_c, v_d, v_r
 fail_yr = None
 
-for age in range(int(c_a), int(e_a)+1):
-    yr = 2026 + (age - int(c_a))
-    cd *= (1 + m_roi)
-    cr *= (1 + m_roi)
-    inc = (h_pay + y_pay) if age < y_r else 85000
-    exp = ex_w if age < y_r else ex_r
-    edu = sum(tui for s in k_s if s <= age < s+4)
+for age in range(int(ca), int(ea) + 1):
+    sim_yr = 2026 + (age - int(ca))
     
-    eq, pmt, noi = 0, 0, 0
-    for p in p_list:
-        h = yr - p["y"]
-        if h < 0: continue
-        val = p["v"] * ((1+p["a"])**h)
-        noi += p["n"] * ((1+p["a"])**h)
-        if h < p["t"]:
-            m, t, d = p["r"]/12, p["t"]*12, h*12
-            deb = p["l"]*((1+m)**t - (1+m)**d)/((1+m)**t - 1)
-            pmt += p["p"]
-        else: deb = 0
-        eq += (val - deb)
+    # ACCURACY FIX: Cash only grows at 2% (Savings Rate), Portfolio at ROI
+    cc *= 1.02 
+    cd *= (1 + roi)
+    cr *= (1 + roi)
+    
+    # Income & Social Security
+    inc = (hp + yp) if age < yr else 85000 
+    exp = ew if age < yr else er
+    
+    re_eq, re_pmt, re_noi = 0, 0, 0
+    for o in plist:
+        years_held = sim_yr - o["y"]
+        if years_held < 0: continue
+        
+        # Current Value (Appreciation)
+        current_val = o["v"] * ((1 + o["a"]) ** years_held)
+        # Rent (Grows with appreciation/inflation)
+        current_noi = o["n"] * ((1 + o["a"]) ** years_held)
+        
+        # Debt Calculation
+        if years_held < o["t"]:
+            m = o["r"] / 12
+            total_mo = o["t"] * 12
+            done_mo = years_held * 12
+            # Remaining Balance Formula
+            deb = o["l"] * ((1 + m)**total_mo - (1 + m)**done_mo) / ((1 + m)**total_mo - 1)
+            re_pmt += o["p"]
+        else:
+            deb = 0 # House is paid off
+            
+        re_eq += (current_val - deb)
+        re_noi += current_noi
 
-    cc += (inc + noi - exp - edu - pmt)
-    if cc < 0 and fail_yr is None: fail_yr = yr
-    res.append({"Age":age,"Cash":cc,"Def":cd,"Roth":cr,"RE":eq,"NW":cc+cd+cr+eq})
+    # Update Cash Flow
+    net_flow = (inc + re_noi) - (exp + re_pmt)
+    cc += net_flow
+    
+    if cc < 0 and fail_yr is None:
+        fail_yr = sim_yr
+        
+    res.append({
+        "Age": age, "Year": sim_yr, "Cash": cc, 
+        "401k": cd, "Roth": cr, "RE_Equity": re_eq, 
+        "Total_NW": cc + cd + cr + re_eq
+    })
 
-# --- 3. OUTPUT ---
-st.title("✨ Legacy 9.3")
+# --- 3. OUTPUT & ACCURACY CHECK ---
+st.title("🛡️ Legacy 9.5: Audited Planner")
+
 if fail_yr:
-    st.warning(f"Math won't work out: Cash hits zero in {fail_yr}.")
+    st.warning(f"⚠️ **Cash Deficit:** Your liquid reserves hit zero in {fail_yr}. Review expenses vs. passive income.")
 
 df = pd.DataFrame(res)
-st.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
 
+# Verification Metrics
+c1, c2, c3 = st.columns(3)
+c1.metric("Current NW", f"${df.iloc[0]['Total_NW']:,.0f}")
+c2.metric("Age 90 NW", f"${df[df['Age']==90]['Total_NW'].values[0]:,.0f}")
+c3.metric("Final Estate", f"${df.iloc[-1]['Total_NW']:,.0f}")
+
+# Stacked Visual
 fig = go.Figure()
-for c, clr in [("Cash","#3b82f6"),("Roth","#10b981"),("Def","#8b5cf6"),("RE","#f59e0b")]:
-    fig.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
+for c, clr in [("RE_Equity","#f59e0b"), ("401k","#8b5cf6"), ("Roth","#10b981"), ("Cash","#3b82f6")]:
+    fig.add_trace(go.Scatter(x=df["Age"], y=df[c], name=c, stackgroup='one', fillcolor=clr, line=dict(width=0.5)))
 
-fig.update_layout(barmode='stack', template="plotly_dark")
+fig.update_layout(template="plotly_dark", height=500, yaxis_title="Wealth ($)")
 st.plotly_chart(fig, use_container_width=True)
 
-with st.expander("📊 LEDGER"):
+with st.expander("🔎 VIEW AUDIT LOG (Annual Breakdown)"):
     st.dataframe(df.style.format("${:,.0f}"))
