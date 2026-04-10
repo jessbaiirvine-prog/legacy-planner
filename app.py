@@ -1,46 +1,54 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Legacy Planner v5.7", layout="wide")
+st.set_page_config(page_title="Legacy 5.8", layout="wide")
 
-# --- 1. SIDEBAR INPUTS ---
+# 1. SIDEBAR
 with st.sidebar:
     st.header("Milestones")
     c_a = st.slider("Current Age", 30, 65, 42)
-    y_r = st.slider("Your Retire Age", 45, 75, 55)
-    h_r = st.slider("Husband Retire Age", 45, 75, 58)
+    y_r = st.slider("Your Retire", 45, 75, 55)
+    h_r = st.slider("Husband Retire", 45, 75, 58)
     ss_a = st.slider("SS Age", 62, 72, 67)
     d_a = st.slider("End Age", 80, 110, 95)
-    
-    st.header("Returns")
-    r4 = st.slider("40s %", 0.0, 15.0, 7.0)/100
-    r5 = st.slider("50s %", 0.0, 15.0, 5.0)/100
-    r6 = st.slider("60+ %", 0.0, 10.0, 4.0)/100
+    st.header("Finance")
+    r_rt = st.slider("Avg Return %", 1, 12, 6) / 100
+    h_n = st.number_input("Husband Net", 145000)
+    y_n = st.number_input("Your Net", 110000)
+    ex_w = st.number_input("Work Exp", 210000)
+    ex_r = st.number_input("Retire Exp", 150000)
 
-    st.header("Education & Finance")
-    n_k = st.number_input("Kids", 0, 5, 2)
-    tui = st.number_input("Tuition ($)", 50000)
-    k_s = [st.number_input(f"K{i+1} Start", 40, 75, 52+(i*6), key=f"k{i}") for i in range(n_k)]
-    h_n = st.number_input("Husband Net ($)", 145000)
-    y_n = st.number_input("Your Net ($)", 110000)
-    ex_w = st.number_input("Work Exp ($)", 210000)
-    ex_r = st.number_input("Retire Exp ($)", 150000)
+# 2. ASSETS (Moved to expander at bottom)
+st.title("🌏 Legacy Master v5.8")
 
-# --- 2. BOTTOM SECTION DATA (RE) ---
-st.title("🌏 Legacy Master v5.7")
-st.subheader("🏠 Real Estate Asset Management")
-re_data = []
-cols = st.columns(3)
-for i in range(6):
-    with cols[i % 3]:
-        with st.expander(f"Property {i+1}", expanded=(i<4)):
-            is_p = st.checkbox("Primary?", i==0, key=f"p{i}")
-            p_cf = 0 if is_p else st.number_input("Cashflow", 7800 if i<4 else 0, key=f"c{i}")
-            p_s = st.number_input("Mtg Start", 35, key=f"s{i}")
-            p_t = st.number_input("Term", 30, key=f"t{i}")
-            p_m = st.number_input("Payment", 15000 if i<4 else 0, key=f"m{i}")
-            re_data.append({"cf": p_cf, "s": p_s, "e": p_s+p_t, "m": p_m})
+# 3. MATH ENGINE
+def calc():
+    port, res = 1700000, []
+    for a in range(c_a, d_a + 1):
+        growth = port * r_rt
+        h_inc = h_n if a < h_r else 0
+        y_inc = y_n if a < y_r else 0
+        ss = 85000 if a >= ss_a else 0
+        lv = ex_r if (a >= y_r and a >= h_r) else ex_w
+        cf = (h_inc + y_inc + ss + growth) - lv
+        port += cf
+        res.append({"Age": a, "Growth": growth, "Inc": h_inc+y_inc+ss, "Exp": -lv, "Port": port})
+    return pd.DataFrame(res)
 
-#
+df = calc()
+
+# 4. TOP SUMMARY (METRICS)
+st.subheader("Executive Summary")
+c1, c2, c3 = st.columns(3)
+c1.metric("Final Legacy", f"${df.iloc[-1]['Port']:,.0f}")
+c2.metric("At Retirement", f"${df[df['Age']==y_r]['Port'].values[0]:,.0f}")
+c3.metric("Year 1 CF", f"${df.iloc[0]['Inc']+df.iloc[0]['Growth']+df.iloc[0]['Exp']:,.0f}")
+
+# 5. CHARTS (Simple Plotly)
+st.subheader("Projections")
+f1 = go.Figure()
+f1.add_trace(go.Bar(x=df["Age"], y=df["Inc"], name="Income", marker_color="green"))
+f1.add_trace(go.Bar(x=df["Age"], y=df["Growth"], name="Growth", marker_color="blue"))
+f1.add_trace(go.Bar(x=df["Age"], y=df["Exp"], name="Expenses", marker_color="red"))
+f1.add_trace(go.Scatter(x=
