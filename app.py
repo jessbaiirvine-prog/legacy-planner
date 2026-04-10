@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy 7.7")
+st.set_page_config(layout="wide", page_title="Legacy 7.8")
 
 # --- UI STYLING ---
 st.markdown("""
@@ -39,24 +39,22 @@ n_kid = sb.number_input("Kids", 0, 5, 2)
 tui = sb.number_input("Tuition/Yr", 50000)
 k_sts = []
 for i in range(int(n_kid)):
-    k_sts.append(sb.sidebar.number_input(f"K{i+1} Start Age", 40, 75, 52+(i*6)))
+    # FIXED: Changed sb.sidebar.number_input to sb.number_input
+    val = sb.number_input(f"K{i+1} Start Age", 40, 75, 52+(i*6))
+    k_sts.append(val)
 
-st.title("✨ Legacy Master v7.7")
+st.title("✨ Legacy Master v7.8")
 
-# --- 2. ASSET INPUTS (HIDDEN FOR MATH) ---
-# We define these here so the math can see them, 
-# but they will be displayed in columns at the bottom.
+# --- 2. PRE-CALCULATE REAL ESTATE ---
+# This block pulls values from the bottom inputs via session_state
 p_data = []
 for i in range(3):
-    # Default values for initial load
-    v_def_val = 950000 if i==0 else 0
-    l_def_val = 700000 if i==0 else 0
-    y_def_val = 2020 if i==0 else 2026
+    # Setup defaults for first-time load
+    v_def_v = 950000 if i==0 else 0
+    l_def_v = 700000 if i==0 else 0
+    y_def_v = 2020 if i==0 else 2026
     
-    # We use session state to bridge the "bottom of page" inputs to the math engine
-    p_val = st.session_state.get(f"v{i}", v_def_val)
-    p_loan = st.session_state.get(f"l{i}", l_def_val)
-    p_yr = st.session_state.get(f"y{i}", y_def_val)
-    p_term = st.session_state.get(f"t{i}", 30)
-    p_int = st.session_state.get(f"i{i}", 4.5) / 100
-    p_app
+    # Retrieve current values from widgets at the bottom
+    p_val = st.session_state.get(f"v{i}", v_def_v)
+    p_loan = st.session_state.get(f"l{i}", l_def_v)
+    p_yr = st.session_state.get(f"y{i}", y_def_v)
