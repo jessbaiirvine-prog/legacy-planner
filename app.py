@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy Master 9.8")
+st.set_page_config(layout="wide", page_title="Legacy Master 9.9")
 
 # --- 1. SIDEBAR MODULES (LHS) ---
 sb = st.sidebar
@@ -27,7 +27,7 @@ with sb.expander("🏠 RE INVESTMENT", expanded=True):
             p = l * (mi * pw) / (pw - 1)
         plist.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":p*12,"n":n*12})
 
-with sb.expander("🏦 RETIREMENT", expanded=False):
+with sb.expander("🏦 RETIREMENT BUCKETS", expanded=False):
     v_d = sb.number_input("401k (Deferred)", value=1200000.0)
     v_r = sb.number_input("Roth/HSA (Tax-Free)", value=500000.0)
     roi = sb.number_input("Market ROI %", value=6.0) / 100
@@ -37,17 +37,21 @@ with sb.expander("🎓 KIDS TUITION", expanded=False):
     tui_yr = sb.number_input("Annual Tuition per Kid", value=50000.0)
     k_ages = []
     for i in range(int(nk)):
-        k_ages.append(sb.number_input(f"Child {i+1} College Start Age", value=52+(i*5)))
+        k_ages.append(sb.number_input(f"Child {i+1} College Start Age (Your Age)", value=52+(i*5)))
 
-with sb.expander("💵 CASH & TIMELINE", expanded=False):
+with sb.expander("💵 CASH & DUAL TIMELINE", expanded=False):
     v_c = sb.number_input("Current Savings", value=200000.0)
+    ca = sb.number_input("Your Current Age", 42)
+    # Salary Inputs
     hp = sb.number_input("Husband Net Salary", value=145000.0)
     yp = sb.number_input("Your Net Salary", value=110000.0)
-    ca = sb.number_input("Current Age", 42)
-    yr = sb.number_input("Retire Age", 55)
+    # SEPARATE RETIREMENT AGES
+    yr = sb.number_input("Your Retirement Age", 55)
+    hr = sb.number_input("Husband Retirement Age (At your age)", 58)
+    
     ea = sb.number_input("End Age", 95)
-    ew = sb.number_input("Annual Exp (Work)", 150000.0)
-    er = sb.number_input("Annual Exp (Retire)", 120000.0)
+    ew = sb.number_input("Annual Exp (Both Working)", 150000.0)
+    er = sb.number_input("Annual Exp (Both Retired)", 120000.0)
 
 # --- 2. MATH ENGINE ---
 res, res_cashflow = [], []
@@ -60,9 +64,13 @@ for age in range(int(ca), int(ea) + 1):
     cd *= (1 + roi)
     cr *= (1 + roi)
     
-    inc_salary = (hp + yp) if age < yr else 0
+    # DUAL INCOME LOGIC: Each salary stops independently
+    inc_h = hp if age < hr else 0
+    inc_y = yp if age < yr else 0
     inc_ss = 85000 if age >= 67 else 0
-    exp_life = -(ew if age < yr else er) 
+    
+    # EXPENSE LOGIC: Shifts to 'Retired' only when BOTH have stopped working
+    exp_life = -(ew if (age < yr or age < hr) else er) 
     
     edu_cost = 0
     for start_age in k_ages:
@@ -83,7 +91,7 @@ for age in range(int(ca), int(ea) + 1):
         re_eq += (val - deb)
         inc_noi += noi
 
-    total_inc = inc_salary + inc_ss + inc_noi
+    total_inc = inc_h + inc_y + inc_ss + inc_noi
     total_exp = exp_life + exp_pmt + edu_cost
     cc += (total_inc + total_exp)
     
@@ -99,36 +107,36 @@ for age in range(int(ca), int(ea) + 1):
     })
     
     res_cashflow.append({
-        "Age": age, "Salary": inc_salary, "SS": inc_ss, "Rent": inc_noi,
+        "Age": age, "Husband_Salary": inc_h, "Your_Salary": inc_y, "SS": inc_ss, "Rent": inc_noi,
         "Lifestyle": exp_life, "Tuition": edu_cost, "Mortgage": exp_pmt
     })
 
 # --- 3. OUTPUT & VISUALS ---
-st.title("🛡️ Legacy Master: Executive Summary v9.8")
+st.title("🛡️ Legacy Master: Dual-Career v9.9")
 
 df = pd.DataFrame(res)
 df_cf = pd.DataFrame(res_cashflow)
 
-# --- THE SUMMARY METRICS (RESTORED) ---
+# METRICS
 st.markdown("### 📊 Financial Overview")
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Current Net Worth", f"${df.iloc[0]['NW']:,.0f}")
-c2.metric(f"NW at Retire (Age {yr})", f"${df[df['Age']==yr]['NW'].values[0]:,.0f}")
+c2.metric(f"NW at Your Retire (Age {yr})", f"${df[df['Age']==yr]['NW'].values[0]:,.0f}")
 c3.metric("Final Estate (Age 95)", f"${df.iloc[-1]['NW']:,.0f}")
 status = "HEALTHY" if not fail_yr else "DEFICIT"
 c4.metric("Liquidity Status", status, delta=None if not fail_yr else f"-{num_insolvent_yrs} Yrs", delta_color="inverse")
 
 if fail_yr:
-    st.error(f"⚠️ **Cash Depletion Alert:** Liquid reserves hit zero in the year {fail_yr}.")
+    st.error(f"⚠️ **Cash Depletion Alert:** Liquid reserves hit zero in {fail_yr}.")
 
-# --- THE ORIGINAL CHART (RESTORED TOTAL NW BAR CHART) ---
+# CHART 1: TOTAL WEALTH
 st.markdown("### 📈 Total Wealth Projection")
 fig1 = go.Figure()
 fig1.add_trace(go.Bar(x=df["Age"], y=df["NW"], name="Total Net Worth", marker_color="#0ea5e9"))
-fig1.update_layout(template="plotly_dark", height=450, yaxis_title="Total Assets ($)", margin=dict(l=20, r=20, t=20, b=20))
+fig1.update_layout(template="plotly_dark", height=400, yaxis_title="Total Assets ($)")
 st.plotly_chart(fig1, use_container_width=True)
 
-# --- ASSET DISTRIBUTION (GROUPED BARS) ---
+# CHART 2: ASSET DISTRIBUTION
 st.markdown("### 📂 Asset Portfolio Breakdown")
 fig2 = go.Figure()
 for col, clr in [("RE","#f59e0b"), ("401k","#8b5cf6"), ("Roth","#10b981"), ("Cash","#3b82f6")]:
@@ -136,12 +144,14 @@ for col, clr in [("RE","#f59e0b"), ("401k","#8b5cf6"), ("Roth","#10b981"), ("Cas
 fig2.update_layout(barmode='group', template="plotly_dark", height=450, yaxis_title="Asset Value ($)")
 st.plotly_chart(fig2, use_container_width=True)
 
-# --- ANNUAL FLOW (INCOME VS SPENDING PEAKS) ---
+# CHART 3: ANNUAL FLOW (INCOME VS SPENDING PEAKS)
 st.markdown("### 💸 Annual Inflow vs. Spending Peaks")
 fig3 = go.Figure()
 # Inflows
-for col, clr in [("Salary","#1e3a8a"), ("Rent","#1d4ed8"), ("SS","#3b82f6")]:
-    fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf[col], name=col, marker_color=clr))
+fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Husband_Salary"], name="Husband Salary", marker_color="#1e3a8a"))
+fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Your_Salary"], name="Your Salary", marker_color="#60a5fa"))
+fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["Rent"], name="Rent In", marker_color="#1d4ed8"))
+fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf["SS"], name="SS In", marker_color="#93c5fd"))
 # Outflows
 for col, clr in [("Lifestyle","#991b1b"), ("Mortgage","#dc2626"), ("Tuition","#ef4444")]:
     fig3.add_trace(go.Bar(x=df_cf["Age"], y=df_cf[col], name=col, marker_color=clr))
