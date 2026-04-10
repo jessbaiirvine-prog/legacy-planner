@@ -4,138 +4,132 @@ import numpy as np
 import plotly.graph_objects as go
 
 # --- PAGE CONFIG ---
-st.set_page_config(page_title="Global Asset & Legacy Planner", layout="wide")
+st.set_page_config(page_title="Global Legacy Master v5", layout="wide")
 
-# Custom CSS
 st.markdown("""
     <style>
-    .main { background-color: #f0f2f6; }
+    .main { background-color: #f8f9fa; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🌏 Global Asset & Legacy Planner")
-st.markdown("Dynamic Milestone Tracking & Multi-Property Portfolio Management")
-st.divider()
+st.title("🌏 Global Legacy Master v5")
+st.markdown("Restored V3 Logic + Split Retirement + Fixed Scaling")
 
-# --- SIDEBAR: DYNAMIC MILESTONES & GLOBAL VARS ---
+# --- SIDEBAR: MULTI-STAGE CONTROLS ---
 with st.sidebar:
     st.header("1. Critical Milestones")
     current_age = st.slider("Your Current Age", 30, 65, 42)
-    stop_work_age = st.slider("Age to Stop Working", 45, 75, 55)
+    your_retire_age = st.slider("Age YOU Stop Working", 45, 75, 55)
+    husband_retire_age = st.slider("Age HUSBAND Stops Working", 45, 75, 58)
     ss_start_age = st.slider("Social Security Start Age", 62, 72, 67)
-    death_age = st.slider("End of Simulation (Death)", 80, 110, 95)
+    death_age = st.slider("Simulation End (Death)", 80, 110, 95)
     
-    st.header("2. Living Expenses")
-    # Toggling expenses for different life stages
-    exp_pre_retire = st.number_input("Annual Living Expenses (Working)", value=150000, step=5000)
-    exp_post_retire = st.number_input("Annual Living Expenses (Retired)", value=120000, step=5000)
+    st.header("2. Return Schedule (Restored)")
+    ret_40s = st.slider("Returns in 40s (%)", 0.0, 15.0, 7.0) / 100
+    ret_50s = st.slider("Returns in 50s (%)", 0.0, 15.0, 5.0) / 100
+    ret_60plus = st.slider("Returns 60+ (%)", 0.0, 10.0, 4.0) / 100
 
-    st.header("3. Investment Returns")
-    ret_working = st.slider("Returns while Working (%)", 0.0, 15.0, 7.0) / 100
-    ret_retired = st.slider("Returns while Retired (%)", 0.0, 10.0, 4.0) / 100
+    st.header("3. Education Logic (Restored)")
+    num_kids = st.number_input("Number of Children", 0, 5, 2)
+    tuition = st.number_input("Annual Tuition ($)", value=50000)
+    kid_starts = [st.number_input(f"Child {i+1} Start Age", 45, 70, 52+(i*6), key=f"k{i}") for i in range(num_kids)]
 
-# --- MAIN PANEL: REAL ESTATE PORTFOLIO ---
+    st.header("4. Direct Income Inputs")
+    husband_net_ann = st.number_input("Husband Annual Net ($)", value=145000)
+    your_net_ann = st.number_input("Your Annual Net ($)", value=110000)
+    
+    st.header("5. Living Expenses")
+    exp_working = st.number_input("Expenses while Working ($)", value=210000)
+    exp_retired = st.number_input("Expenses in Retirement ($)", value=150000)
+
+# --- REAL ESTATE ENGINE ---
 st.header("🏠 Real Estate Portfolio")
-st.info("Input your 6 properties. Primary Residences generate $0 income. Mortgages stop automatically after the term ends.")
-
 re_data = []
-cols = st.columns(3)
+re_cols = st.columns(3)
 for i in range(6):
-    with cols[i % 3]:
+    with re_cols[i % 3]:
         with st.expander(f"Property {i+1}", expanded=(i < 4)):
-            is_primary = st.checkbox("Primary Residence?", value=(i==0), key=f"pri_{i}")
-            annual_cf = 0 if is_primary else st.number_input("Annual Net Cash Flow ($)", value=7800 if i < 4 else 0, key=f"cf_{i}")
-            m_start_age = st.number_input("Mortgage Start (Your Age)", value=35, key=f"start_{i}")
-            m_term = st.number_input("Mortgage Term (Years)", value=30, key=f"term_{i}")
-            m_payment = st.number_input("Annual P&I Payment ($)", value=15000 if i < 4 else 0, key=f"pay_{i}")
-            
-            re_data.append({
-                "income": annual_cf,
-                "start": m_start_age,
-                "end": m_start_age + m_term,
-                "payment": m_payment
-            })
+            is_pri = st.checkbox("Primary?", value=(i==0), key=f"p{i}")
+            cf = 0 if is_pri else st.number_input("Annual Cashflow", value=7800 if i<4 else 0, key=f"c{i}")
+            m_start = st.number_input("Mtg Start Age", value=35, key=f"s{i}")
+            m_term = st.number_input("Term (Yrs)", value=30, key=f"t{i}")
+            m_pay = st.number_input("Mtg Payment", value=15000 if i<4 else 0, key=f"m{i}")
+            re_data.append({"income": cf, "start": m_start, "end": m_start+m_term, "pay": m_pay})
 
 # --- MATH ENGINE ---
-def run_asset_model():
-    portfolio = 1700000 # Starting liquid
+def run_master_model():
+    portfolio = 1700000
     data = []
     
     for a in range(current_age, death_age + 1):
-        # 1. Growth & Returns
-        current_ret = ret_working if a < stop_work_age else ret_retired
-        growth = portfolio * current_ret
+        # 1. Returns
+        if a < 50: r = ret_40s
+        elif a < 60: r = ret_50s
+        else: r = ret_60plus
+        growth = portfolio * r
         
-        # 2. Work Income
-        work_inc = (145000 + 110000) if a < stop_work_age else 0 # Combined net
+        # 2. Income Logic
+        h_inc = husband_net_ann if a < husband_retire_age else 0
+        y_inc = your_net_ann if a < your_retire_age else 0
         ss_inc = 85000 if a >= ss_start_age else 0
         
-        # 3. Real Estate Logic
-        total_re_income = 0
-        total_re_mortgage = 0
-        milestones = []
-        
+        # 3. Real Estate
+        re_inc, re_mtg = 0, 0
+        re_milestones = []
         for prop in re_data:
-            total_re_income += prop["income"]
+            re_inc += prop["income"]
             if prop["start"] <= a < prop["end"]:
-                total_re_mortgage += prop["payment"]
-            if a == prop["end"]:
-                milestones.append(f"RE Paid Off")
+                re_mtg += prop["pay"]
+            if a == prop["end"]: re_milestones.append("RE Paid")
+            
+        # 4. Education
+        edu_cost = sum([tuition for start in kid_starts if start <= a < start+4])
         
-        # 4. Expenses
-        current_living = exp_pre_retire if a < stop_work_age else exp_post_retire
+        # 5. Expenses
+        is_retired = (a >= your_retire_age) and (a >= husband_retire_age)
+        living = exp_retired if is_retired else exp_working
         
-        # 5. Milestone Check
-        if a == stop_work_age: milestones.append("Stop Working")
-        if a == ss_start_age: milestones.append("Social Security")
-        
-        # Update Portfolio
-        net_cash_flow = (work_inc + ss_inc + total_re_income + growth) - (current_living + total_re_mortgage)
-        portfolio += net_cash_flow
+        # Calculate
+        net_cf = (h_inc + y_inc + ss_inc + re_inc + growth) - (living + re_mtg + edu_cost)
+        portfolio += net_cash_flow = net_cf
         
         data.append({
-            "Age": a,
-            "Portfolio Growth": growth,
-            "Salaries": work_inc,
-            "Social Security": ss_inc,
-            "Rental Income": total_re_income,
-            "Living Expenses": -current_living,
-            "Mortgage Payments": -total_re_mortgage,
-            "Total Portfolio": portfolio,
-            "Milestone": ", ".join(milestones)
+            "Age": a, "Growth": growth, "Husband": h_inc, "You": y_inc, 
+            "SS": ss_inc, "Rentals": re_inc, "Living": -living, "Mtg": -re_mtg, 
+            "Edu": -edu_cost, "Portfolio": portfolio, "Tags": ", ".join(re_milestones)
         })
     return pd.DataFrame(data)
 
-df = run_asset_model()
+df = run_master_model()
 
-# --- VISUALIZATION ---
-# 1. Cash Flow Bar Chart
-st.subheader("Cash Flow & Milestone Breakdown")
+# --- RE-OPTIMIZED VISUALIZATION ---
+st.subheader("Interactive Cash Flow & Legacy Tracker")
+
 fig = go.Figure()
 
-# Income
-fig.add_trace(go.Bar(name="Portfolio Growth", x=df["Age"], y=df["Portfolio Growth"], marker_color='#1f77b4'))
-fig.add_trace(go.Bar(name="Salaries", x=df["Age"], y=df["Salaries"], marker_color='#aec7e8'))
-fig.add_trace(go.Bar(name="Rental Income", x=df["Age"], y=df["Rental Income"], marker_color='#2ca02c'))
-fig.add_trace(go.Bar(name="Social Security", x=df["Age"], y=df["Social Security"], marker_color='#98df8a'))
+# Add Income Bars
+fig.add_trace(go.Bar(name="Growth", x=df["Age"], y=df["Growth"], marker_color='#1f77b4'))
+fig.add_trace(go.Bar(name="Husband", x=df["Age"], y=df["Husband"], marker_color='#aec7e8'))
+fig.add_trace(go.Bar(name="You", x=df["Age"], y=df["You"], marker_color='#ff7f0e'))
+fig.add_trace(go.Bar(name="SS/Rentals", x=df["Age"], y=df["SS"]+df["Rentals"], marker_color='#2ca02c'))
 
-# Expenses
-fig.add_trace(go.Bar(name="Living Expenses", x=df["Age"], y=df["Living Expenses"], marker_color='#d62728'))
-fig.add_trace(go.Bar(name="Mortgage Payments", x=df["Age"], y=df["Mortgage Payments"], marker_color='#ff9896'))
+# Add Expense Bars
+fig.add_trace(go.Bar(name="Expenses", x=df["Age"], y=df["Living"]+df["Mtg"]+df["Edu"], marker_color='#d62728'))
 
-# Add Milestones as Text Labels
-for i, row in df.iterrows():
-    if row["Milestone"]:
-        fig.add_annotation(x=row["Age"], y=row["Total Portfolio"], text=row["Milestone"], 
-                           showarrow=True, arrowhead=1, ax=0, ay=-40)
+# Add Portfolio Line on SECONDARY Y-AXIS to fix scaling
+fig.add_trace(go.Scatter(name="Total Portfolio", x=df["Age"], y=df["Portfolio"], 
+                         yaxis="y2", line=dict(color='black', width=3)))
 
-fig.update_layout(barmode='relative', template="plotly_white", height=600, legend=dict(orientation="h", y=1.1))
+fig.update_layout(
+    barmode='relative',
+    yaxis=dict(title="Annual Cash Flow ($)", side="left"),
+    yaxis2=dict(title="Total Net Worth ($)", side="right", overlaying="y", showgrid=False),
+    template="plotly_white", height=650,
+    legend=dict(orientation="h", y=1.1)
+)
+
 st.plotly_chart(fig, use_container_width=True)
 
-# 2. Portfolio Line
-st.subheader("Total Liquid Net Worth Over Time")
-st.line_chart(df.set_index("Age")["Total Portfolio"])
-
-with st.expander("Ledger Detail"):
+with st.expander("Ledger Data"):
     st.write(df)
