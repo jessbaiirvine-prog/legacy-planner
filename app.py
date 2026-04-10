@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide", page_title="Legacy 8.7")
+st.set_page_config(layout="wide", page_title="Legacy 8.8")
 
 # --- 1. TOP SLOTS ---
 t_head = st.container()
@@ -26,9 +26,11 @@ with sb.expander("🏠 RE INVESTMENT", expanded=True):
         a = st.number_input("Annual Appr %", value=3.0, key=f"a{i}") / 100
         n = st.number_input("Monthly Net Rent (NOI)", value=0.0, key=f"n{i}")
         
+        # Amortization Formula logic
         pmt = 0
         if l > 0 and r > 0:
-            mi, mt = r/12, t*12
+            mi = r / 12
+            mt = t * 12
             pw = (1 + mi)**mt
             mp = l * (mi * pw) / (pw - 1)
             pmt = mp * 12
@@ -53,11 +55,8 @@ with sb.expander("🎓 KIDS TUITION", expanded=False):
     n_k = st.number_input("Number of Kids", value=2)
     tui = st.number_input("Tuition per Year", value=50000.0)
     k_s = []
-    # Using a standard loop to prevent the 'SyntaxError' on list comps
     for i in range(int(n_k)):
-        label = f"K{i+1} College Start Age"
-        val = 52 + (i * 6)
-        ks_val = st.number_input(label, value=val)
+        ks_val = st.number_input(f"K{i+1} College Start Age", value=52+(i*6))
         k_s.append(ks_val)
 
 # -- MODULE: TIMELINE & EXPENSES --
@@ -74,8 +73,9 @@ results = []
 cur_c, cur_d, cur_r = v_csh, v_401, (v_r40 + v_rir + v_hsa)
 ruin_yr, ruin_msg = None, ""
 
+# Force the range to be valid
 s_age = int(c_a)
-f_age = int(max(c_a, e_a))
+f_age = int(e_a) if e_a >= c_a else int(c_a)
 
 for age in range(s_age, f_age + 1):
     yr = 2026 + (age - s_age)
@@ -120,34 +120,38 @@ for age in range(s_age, f_age + 1):
         "RE_Equity": re_eq, "NW": nw
     })
 
-# --- 4. OUTPUTS ---
-if len(results) > 0:
-    df = pd.DataFrame(results)
+# --- 4. DATA FRAME SAFETY CHECK ---
+if not results:
+    # If for some reason results is still empty, add a dummy row to prevent AttributeError
+    results.append({"Age": c_a, "Year": 2026, "Checking": 0, "Deferred": 0, "Roth_HSA": 0, "RE_Equity": 0, "NW": 0})
 
-    with t_head:
-        st.title("✨ Legacy Master v8.7")
-        if ruin_yr:
-            st.error(f"🛑 **UNSUSTAINABLE:** {ruin_msg}")
-        
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Current NW", f"${df.iloc[0]['NW']:,.0f}")
-        
-        r_df = df[df['Age'] == y_r]
-        rv = r_df['NW'].values[0] if not r_df.empty else 0
-        m2.metric("At Your Retirement", f"${rv:,.0f}")
-        m3.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
-        m4.metric("Status", "Solvent" if not ruin_yr else "Deficit")
+df = pd.DataFrame(results)
 
-    with t_chart:
-        fig = go.Figure()
-        cts = [("Checking","#3b82f6"), ("Roth_HSA","#10b981"), 
-               ("Deferred","#8b5cf6"), ("RE_Equity","#f59e0b")]
-        for col, clr in cts:
-            fig.add_trace(go.Bar(x=df["Age"], y=df[col], name=col, marker_color=clr))
-        
-        fig.update_layout(barmode='stack', template="plotly_dark", height=450, 
-                          margin=dict(t=10,b=10), legend=dict(orientation="h", y=1.1))
-        st.plotly_chart(fig, use_container_width=True)
+# --- 5. OUTPUTS ---
+with t_head:
+    st.title("✨ Legacy Master v8.8")
+    if ruin_yr:
+        st.error(f"🛑 **UNSUSTAINABLE:** {ruin_msg}")
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Current NW", f"${df.iloc[0]['NW']:,.0f}")
+    
+    r_df = df[df['Age'] == y_r]
+    rv = r_df['NW'].values[0] if not r_df.empty else 0
+    m2.metric("At Your Retirement", f"${rv:,.0f}")
+    m3.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
+    m4.metric("Status", "Solvent" if not ruin_yr else "Deficit")
 
-    with st.expander("📊 ANNUAL LEDGER"):
-        st.dataframe(df.style.format("${:,.0f}"))
+with t_chart:
+    fig = go.Figure()
+    cts = [("Checking","#3b82f6"), ("Roth_HSA","#10b981"), 
+           ("Deferred","#8b5cf6"), ("RE_Equity","#f59e0b")]
+    for col, clr in cts:
+        fig.add_trace(go.Bar(x=df["Age"], y=df[col], name=col, marker_color=clr))
+    
+    fig.update_layout(barmode='stack', template="plotly_dark", height=450, 
+                      margin=dict(t=10,b=10), legend=dict(orientation="h", y=1.1))
+    st.plotly_chart(fig, use_container_width=True)
+
+with st.expander("📊 ANNUAL LEDGER"):
+    st.dataframe(df.style.format("${:,.0f}"))
