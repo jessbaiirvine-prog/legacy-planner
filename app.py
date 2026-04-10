@@ -2,106 +2,139 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Legacy 7.0")
+
+# --- PROJECTIONLAB STYLING ---
+st.markdown("""
+<style>
+div[data-testid="metric-container"] {
+    background-color: #1e1e2e;
+    border: 1px solid #2b2b40;
+    padding: 15px;
+    border-radius: 8px;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # --- 1. SETTINGS ---
 sb = st.sidebar
-sb.header("Milestones")
+sb.header("Timeline")
 ca = sb.slider("Current Age", 30, 65, 42)
 yr = sb.slider("Your Retire", 45, 75, 55)
-hr = sb.slider("Husband Retire", 45, 75, 58)
-sa = sb.slider("SS Age", 62, 72, 67)
+hr = sb.slider("Hus Retire", 45, 75, 58)
 da = sb.slider("End Age", 80, 110, 95)
-rt = sb.slider("Return %", 1, 10, 6) / 100
 
-sb.header("Finance")
+sb.header("Portfolio Breakdown ($)")
+v_tx = sb.number_input("Taxable (Cash/Broker)", 200000)
+v_td = sb.number_input("Tax-Deferred (401k)", 1200000)
+v_ro = sb.number_input("Tax-Free (Roth)", 300000)
+
+sb.header("Inflows & Outflows")
+rt = sb.slider("Market Return %", 1, 10, 6) / 100
 hn = sb.number_input("Husband Net", 145000)
 yn = sb.number_input("Your Net", 110000)
 ew = sb.number_input("Work Exp", 210000)
 er = sb.number_input("Retire Exp", 150000)
 
-sb.header("Education")
-nk = sb.number_input("Kids", 0, 5, 2)
-tui = sb.number_input("Annual Tuition ($)", 50000)
-ks = []
-for i in range(nk):
-    ks.append(sb.number_input(f"K{i+1} Start", 40, 75, 52+(i*6)))
+st.title("✨ Legacy Master v7.0")
+st.markdown("### Advanced Equity & Tax Projection")
 
-st.title("🌏 Legacy Master v6.1")
-
-# --- 2. REAL ESTATE ---
+# --- 2. REAL ESTATE EQUITY MODULE ---
 re = []
 cl = st.columns(3)
-for i in range(6):
-    with cl[i % 3]:
-        with st.expander(f"Property {i+1}", i < 4):
-            ip = st.checkbox("Primary?", i == 0, key=f"p{i}")
-            cf = 0 if ip else st.number_input(
-                "Rent", 7800 if i < 4 else 0, key=f"c{i}"
-            )
-            ms = st.number_input("Mtg Start", 35, key=f"s{i}")
-            mt = st.number_input("Term", 30, key=f"t{i}")
-            mp = st.number_input(
-                "Pay", 15000 if i < 4 else 0, key=f"m{i}"
-            )
-            re.append({"f":cf, "s":ms, "e":ms+mt, "p":mp})
+for i in range(3): # Reduced to 3 for clean UI, add more as needed
+    with cl[i]:
+        with st.expander(f"Property {i+1} Equity", i==0):
+            pp = st.number_input("Purchase Price", 800000, key=f"p{i}")
+            pa = st.number_input("Purchase Age", 35, key=f"a{i}")
+            cv = st.number_input("Current Value", 950000, key=f"v{i}")
+            mb = st.number_input("Mtg Balance", 600000, key=f"b{i}")
+            ag = st.slider("Appreciation %", 1, 10, 3, key=f"g{i}")/100
+            
+            # Simple annual principal paydown estimation
+            pd = st.number_input("Annual Principal Paydown", 12000, key=f"d{i}")
+            
+            re.append({
+                "val": cv, "debt": mb, "appr": ag, "paydown": pd
+            })
 
-# --- 3. MATH ---
-p = 1700000 
+# --- 3. MATH ENGINE ---
 res = []
+tx, td, ro = v_tx, v_td, v_ro
+
 for a in range(ca, da + 1):
-    g = p * rt
+    # Grow Portfolio (Simplified uniform growth)
+    tx += (tx * rt)
+    td += (td * rt)
+    ro += (ro * rt)
+    
+    # Income & Living
     hi = hn if a < hr else 0
     yi = yn if a < yr else 0
-    ss = 85000 if a >= sa else 0
-    
-    rf = sum(x["f"] for x in re)
-    py = sum(x["p"] for x in re if x["s"] <= a < x["e"])
-    ed = sum(tui for s in ks if s <= a < s + 4)
-    
+    ss = 85000 if a >= 67 else 0
     lv = er if (a >= yr and a >= hr) else ew
-    net = (hi + yi + ss + rf + g) - (lv + py + ed)
-    p += net
+    
+    # Net Cashflow goes to Taxable
+    net_cf = (hi + yi + ss) - lv
+    tx += net_cf
+    
+    # Grow Real Estate & Pay Down Debt
+    re_val = 0
+    re_dbt = 0
+    for p in re:
+        p["val"] += (p["val"] * p["appr"])
+        p["debt"] = max(0, p["debt"] - p["paydown"])
+        re_val += p["val"]
+        re_dbt += p["debt"]
+        
+    re_eq = re_val - re_dbt
+    total_nw = tx + td + ro + re_eq
     
     res.append({
-        "Age": a, 
-        "Growth": g, 
-        "Inc": hi + yi + ss + rf, 
-        "Exp": -(lv + py + ed), 
-        "Port": p
+        "Age": a, "Taxable": tx, "Deferred": td, "Roth": ro,
+        "RE_Value": re_val, "RE_Debt": re_dbt, "RE_Equity": re_eq,
+        "NetWorth": total_nw
     })
 
 df = pd.DataFrame(res)
 
-# --- 4. OUTPUTS ---
+# --- 4. PROJECTIONLAB STYLE OUTPUTS ---
 st.divider()
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Final Legacy", f"${df.iloc[-1]['Port']:,.0f}")
-c2.metric("At Retire", f"${df[df['Age']==yr]['Port'].values[0]:,.0f}")
-c3.metric("Peak Growth", f"${df['Growth'].max():,.0f}")
-c4.metric("Total Tuition", f"${nk * tui * 4:,.0f}")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Current Net Worth", f"${df.iloc[0]['NetWorth']:,.0f}")
+m2.metric("NW at Retirement", f"${df[df['Age']==yr]['NetWorth'].values[0]:,.0f}")
+m3.metric("Final Estate Value", f"${df.iloc[-1]['NetWorth']:,.0f}")
+m4.metric("Current RE Equity", f"${df.iloc[0]['RE_Equity']:,.0f}")
 
-st.subheader("Visual Projections")
+st.subheader("Net Worth Composition Over Time")
+
+# Stacked Area Chart for smooth ProjectionLab aesthetic
 f = go.Figure()
-f.add_trace(go.Bar(
-    x=df["Age"], y=df["Inc"], name="Income", marker_color="green"
-))
-f.add_trace(go.Bar(
-    x=df["Age"], y=df["Growth"], name="Growth", marker_color="blue"
-))
-f.add_trace(go.Bar(
-    x=df["Age"], y=df["Exp"], name="Outflow", marker_color="red"
+f.add_trace(go.Scatter(
+    x=df["Age"], y=df["Taxable"], name="Taxable/Cash", 
+    stackgroup='one', fillcolor='#3b82f6', line=dict(width=0)
 ))
 f.add_trace(go.Scatter(
-    x=df["Age"], y=df["Port"], name="Wealth", yaxis="y2", 
-    line=dict(color="black")
+    x=df["Age"], y=df["Roth"], name="Roth (Tax-Free)", 
+    stackgroup='one', fillcolor='#10b981', line=dict(width=0)
+))
+f.add_trace(go.Scatter(
+    x=df["Age"], y=df["Deferred"], name="Tax-Deferred", 
+    stackgroup='one', fillcolor='#8b5cf6', line=dict(width=0)
+))
+f.add_trace(go.Scatter(
+    x=df["Age"], y=df["RE_Equity"], name="Real Estate Equity", 
+    stackgroup='one', fillcolor='#f59e0b', line=dict(width=0)
 ))
 
 f.update_layout(
-    barmode="relative", 
-    yaxis2=dict(overlaying="y", side="right"), 
-    height=450, 
-    margin=dict(t=0, b=0)
+    template="plotly_dark", # Forces the sleek dark mode
+    hovermode="x unified",
+    height=500,
+    margin=dict(t=20, b=0),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
 )
 st.plotly_chart(f, use_container_width=True)
-st.dataframe(df)
+
+with st.expander("View Raw Ledger"):
+    st.dataframe(df)
