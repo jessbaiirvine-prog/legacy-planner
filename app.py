@@ -61,4 +61,39 @@ for age in range(int(c_a), int(e_a)+1):
     cr *= (1 + m_roi)
     inc = (h_pay + y_pay) if age < y_r else 85000
     exp = ex_w if age < y_r else ex_r
-    edu = sum(tui for s in k
+    edu = sum(tui for s in k_s if s <= age < s+4)
+    
+    eq, pmt, noi = 0, 0, 0
+    for p in p_list:
+        h = yr - p["y"]
+        if h < 0: continue
+        val = p["v"] * ((1+p["a"])**h)
+        noi += p["n"] * ((1+p["a"])**h)
+        if h < p["t"]:
+            m, t, d = p["r"]/12, p["t"]*12, h*12
+            deb = p["l"]*((1+m)**t - (1+m)**d)/((1+m)**t - 1)
+            pmt += p["p"]
+        else: deb = 0
+        eq += (val - deb)
+
+    cc += (inc + noi - exp - edu - pmt)
+    if cc < 0 and fail_yr is None: fail_yr = yr
+    res.append({"Age":age,"Cash":cc,"Def":cd,"Roth":cr,"RE":eq,"NW":cc+cd+cr+eq})
+
+# --- 3. OUTPUT ---
+st.title("✨ Legacy 9.3")
+if fail_yr:
+    st.warning(f"Math won't work out: Cash hits zero in {fail_yr}.")
+
+df = pd.DataFrame(res)
+st.metric("Final Estate", f"${df.iloc[-1]['NW']:,.0f}")
+
+fig = go.Figure()
+for c, clr in [("Cash","#3b82f6"),("Roth","#10b981"),("Def","#8b5cf6"),("RE","#f59e0b")]:
+    fig.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
+
+fig.update_layout(barmode='stack', template="plotly_dark")
+st.plotly_chart(fig, use_container_width=True)
+
+with st.expander("📊 LEDGER"):
+    st.dataframe(df.style.format("${:,.0f}"))
