@@ -154,15 +154,20 @@ fig2.update_layout(barmode='relative', template="plotly_dark", title="Cash Flow 
 st.plotly_chart(fig2, use_container_width=True)
 
 # Excel Export & Ledger
-col_a, col_b = st.columns([1, 4])
+# --- REFINED FAIL-PROOF EXPORT HUB ---
 with col_a:
     try:
+        # Attempt Excel first
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # We try 'openpyxl' first as it is the modern standard for Streamlit Cloud
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='MasterLedger')
         st.download_button("📊 Download Excel", output.getvalue(), file_name="retirement_model.xlsx", use_container_width=True)
     except Exception:
-        st.warning("Install xlsxwriter for Excel")
+        # If Excel fails, immediately offer a CSV download instead
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📄 Download CSV", csv, "retirement_model.csv", "text/csv", use_container_width=True)
+        st.caption("⚠️ Excel engine not found; providing CSV instead.")
 
 with st.expander("🔎 View Master Audit Ledger", expanded=False):
     format_dict = {col: "${:,.0f}" for col in df.columns if col not in ["Age", "Year"]}
