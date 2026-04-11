@@ -129,23 +129,25 @@ for age in range(int(ca), int(ea) + 1):
     })
 
 # --- 4. OUTPUT ---
-st.title("🛡️ Legacy Master v12.3")
+st.title("🛡️ Legacy Master v12.4")
 df = pd.DataFrame(res)
 
+# Summary Metrics
 c1, c2, c3 = st.columns(3)
 c1.metric("Current NW", f"${df.iloc[0]['Total Net Worth']:,.0f}")
 c2.metric("Final Estate", f"${df.iloc[-1]['Total Net Worth']:,.0f}")
 c3.metric("Liquidity Status", "SAFE" if not fail_yr else f"Shortage {fail_yr}")
 
-# Chart 1
+# Chart 1: Wealth Distribution
 fig1 = go.Figure()
 for c, clr in [("RE Equity","#f59e0b"),("401k","#8b5cf6"),("Roth","#10b981"),("Cash Component","#3b82f6")]:
     fig1.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
 fig1.update_layout(barmode='stack', template="plotly_dark", title="Total Wealth Distribution", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
 st.plotly_chart(fig1, use_container_width=True)
 
-# Chart 2
+# Chart 2: Cash Flow Audit
 fig2 = go.Figure()
+df_cf = pd.DataFrame(res) # Using the same df for the audit breakdown
 for c, clr in [("Husband Salary","#1e3a8a"),("Your Salary","#3b82f6"),("Rent In","#1d4ed8"),("SocSec","#60a5fa"),("Sales In","#10b981")]:
     fig2.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
 for c, clr in [("Lifestyle Out","#991b1b"),("Mortgage Out","#dc2626"),("Tuition Out","#ef4444")]:
@@ -153,21 +155,22 @@ for c, clr in [("Lifestyle Out","#991b1b"),("Mortgage Out","#dc2626"),("Tuition 
 fig2.update_layout(barmode='relative', template="plotly_dark", title="Cash Flow Peaks (Audit)", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
 st.plotly_chart(fig2, use_container_width=True)
 
-# Excel Export & Ledger
-# --- REFINED FAIL-PROOF EXPORT HUB ---
-with col_a:
+# --- EXPORT & LEDGER SECTION ---
+# This creates the columns to fix the NameError
+col_export, col_empty = st.columns([2, 8]) 
+
+with col_export:
     try:
-        # Attempt Excel first
+        # Try Excel (Openpyxl or Xlsxwriter)
         output = BytesIO()
-        # We try 'openpyxl' first as it is the modern standard for Streamlit Cloud
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='MasterLedger')
         st.download_button("📊 Download Excel", output.getvalue(), file_name="retirement_model.xlsx", use_container_width=True)
     except Exception:
-        # If Excel fails, immediately offer a CSV download instead
+        # Fallback to CSV if Excel engine is missing
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📄 Download CSV", csv, "retirement_model.csv", "text/csv", use_container_width=True)
-        st.caption("⚠️ Excel engine not found; providing CSV instead.")
+        st.caption("Excel engine not found; providing CSV.")
 
 with st.expander("🔎 View Master Audit Ledger", expanded=False):
     format_dict = {col: "${:,.0f}" for col in df.columns if col not in ["Age", "Year"]}
