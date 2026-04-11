@@ -4,20 +4,19 @@ import plotly.graph_objects as go
 import json
 from io import BytesIO
 
-st.set_page_config(layout="wide", page_title="Legacy Master 12.3")
+st.set_page_config(layout="wide", page_title="Legacy Master 12.5")
 
-# --- 1. PERSISTENCE & PORTABILITY ---
+# --- 1. PERSISTENCE ---
 if "init" not in st.session_state:
     st.session_state.init = True
 
 def get_v(key, default):
     return st.session_state[key] if key in st.session_state else default
 
-# --- 2. SIDEBAR CONFIGURATION ---
+# --- 2. SIDEBAR ---
 sb = st.sidebar
 sb.title("⚙️ Strategic Planning")
 
-# IMPORT/EXPORT AT TOP
 with sb.expander("💾 SAVE, LOAD & EXPORT", expanded=True):
     uploaded_config = st.file_uploader("📂 Import Saved Work (.json)", type="json")
     if uploaded_config:
@@ -28,7 +27,7 @@ with sb.expander("💾 SAVE, LOAD & EXPORT", expanded=True):
     state_json = json.dumps({k: v for k, v in st.session_state.items() if k != "init"}, indent=4)
     st.download_button("📥 Save Inputs (.json)", state_json, file_name="planner_config.json")
 
-# MODULE: REAL ESTATE
+# REAL ESTATE
 sb.markdown("### 🏠 REAL ESTATE PORTFOLIO")
 np = sb.number_input("Total Property Count", value=get_v("np", 1), min_value=0, key="np")
 plist = []
@@ -51,16 +50,14 @@ for i in range(int(np)):
             pw = (1 + mi)**mt; p = l * (mi * pw) / (pw - 1)
         plist.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":p*12,"n":n*12,"sell":do_sell,"age":s_age})
 
-# MODULE: LIQUID ASSETS
-sb.markdown("### 🏦 LIQUID ASSETS")
-with sb.expander("💰 Current Balances & ROI", expanded=False):
+# ASSETS & CAREER (Consolidated)
+sb.markdown("### 🏦 ASSETS & CAREER")
+with sb.expander("💰 Cash & ROI", expanded=False):
     v_c = st.number_input("Cash/Savings", value=get_v("v_c", 200000.0), key="v_c")
-    v_d = st.number_input("401k (Tax-Deferred)", value=get_v("v_d", 1200000.0), key="v_d")
-    v_r = st.number_input("Roth/HSA (Tax-Free)", value=get_v("v_r", 500000.0), key="v_r")
+    v_d = st.number_input("401k", value=get_v("v_d", 1200000.0), key="v_d")
+    v_r = st.number_input("Roth/HSA", value=get_v("v_r", 500000.0), key="v_r")
     roi = st.number_input("Market ROI %", value=get_v("roi", 6.0), key="roi") / 100
 
-# MODULE: CAREER & TIMELINE
-sb.markdown("### 💼 CAREER & SPENDING")
 with sb.expander("👩‍💼 Your Profile", expanded=False):
     ca = st.number_input("Your Current Age", value=get_v("ca", 42), key="ca")
     yp = st.number_input("Your Net Salary", value=get_v("yp", 110000.0), key="yp")
@@ -70,19 +67,19 @@ with sb.expander("👨‍💼 Husband Profile", expanded=False):
     hp = st.number_input("Husband Net Salary", value=get_v("hp", 145000.0), key="hp")
     hr = st.number_input("His Retire Age (At Your Age)", value=get_v("hr", 58), key="hr")
 
-with sb.expander("📉 Global Spending", expanded=False):
-    ew = st.number_input("Annual Spend (Working)", value=get_v("ew", 150000.0), key="ew")
-    er = st.number_input("Annual Spend (Retired)", value=get_v("er", 120000.0), key="er")
+with sb.expander("📉 Spending & End Age", expanded=False):
+    ew = st.number_input("Spend (Working)", value=get_v("ew", 150000.0), key="ew")
+    er = st.number_input("Spend (Retired)", value=get_v("er", 120000.0), key="er")
     ea = st.number_input("Simulation End Age", value=get_v("ea", 95), key="ea")
 
-# MODULE: COLLEGE
-sb.markdown("### 🎓 EDUCATION FUNDING")
+# COLLEGE
+sb.markdown("### 🎓 EDUCATION")
 nk = sb.number_input("Number of Kids", value=get_v("nk", 2), min_value=0, key="nk")
 kids = []
 for i in range(int(nk)):
     with sb.expander(f"🧒 Child {i+1}", expanded=False):
         cost = st.number_input(f"Annual Cost C{i+1}", value=get_v(f"tc{i}", 50000.0), key=f"tc{i}")
-        start = st.number_input(f"College Start (Your Age) C{i+1}", value=get_v(f"ts{i}", 52+(i*5)), key=f"ts{i}")
+        start = st.number_input(f"Start Age C{i+1}", value=get_v(f"ts{i}", 52+(i*5)), key=f"ts{i}")
         kids.append({"cost": cost, "start": start})
 
 # --- 3. MATH ENGINE ---
@@ -93,12 +90,9 @@ fail_yr = None
 for age in range(int(ca), int(ea) + 1):
     sim_yr = 2026 + (age - int(ca))
     cc *= 1.02; cd *= (1 + roi); cr *= (1 + roi)
-    
     inc_h, inc_y = (hp if age < hr else 0), (yp if age < yr else 0)
     inc_ss = 85000 if age >= 67 else 0
     exp_l = -(ew if (age < yr or age < hr) else er)
-    
-    # Independent kid tuition logic
     edu = sum(-k["cost"] for k in kids if k["start"] <= age < k["start"] + 4)
     
     re_eq, re_pmt, re_noi, re_sale = 0, 0, 0, 0
@@ -129,49 +123,42 @@ for age in range(int(ca), int(ea) + 1):
     })
 
 # --- 4. OUTPUT ---
-st.title("🛡️ Legacy Master v12.4")
+st.title("🛡️ Legacy Master v12.5")
 df = pd.DataFrame(res)
 
-# Summary Metrics
 c1, c2, c3 = st.columns(3)
 c1.metric("Current NW", f"${df.iloc[0]['Total Net Worth']:,.0f}")
 c2.metric("Final Estate", f"${df.iloc[-1]['Total Net Worth']:,.0f}")
 c3.metric("Liquidity Status", "SAFE" if not fail_yr else f"Shortage {fail_yr}")
 
-# Chart 1: Wealth Distribution
+# Charts
 fig1 = go.Figure()
 for c, clr in [("RE Equity","#f59e0b"),("401k","#8b5cf6"),("Roth","#10b981"),("Cash Component","#3b82f6")]:
     fig1.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
 fig1.update_layout(barmode='stack', template="plotly_dark", title="Total Wealth Distribution", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
-st.plotly_chart(fig1, use_container_width=True)
+st.plotly_chart(fig1, width="stretch") # Updated syntax
 
-# Chart 2: Cash Flow Audit
 fig2 = go.Figure()
-df_cf = pd.DataFrame(res) # Using the same df for the audit breakdown
 for c, clr in [("Husband Salary","#1e3a8a"),("Your Salary","#3b82f6"),("Rent In","#1d4ed8"),("SocSec","#60a5fa"),("Sales In","#10b981")]:
     fig2.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
 for c, clr in [("Lifestyle Out","#991b1b"),("Mortgage Out","#dc2626"),("Tuition Out","#ef4444")]:
     fig2.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
 fig2.update_layout(barmode='relative', template="plotly_dark", title="Cash Flow Peaks (Audit)", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
-st.plotly_chart(fig2, use_container_width=True)
+st.plotly_chart(fig2, width="stretch") # Updated syntax
 
-# --- EXPORT & LEDGER SECTION ---
-# This creates the columns to fix the NameError
-col_export, col_empty = st.columns([2, 8]) 
-
-with col_export:
+# Export
+col_exp, _ = st.columns([2, 8])
+with col_exp:
     try:
-        # Try Excel (Openpyxl or Xlsxwriter)
+        # We check for openpyxl explicitly in 2026 environments
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='MasterLedger')
-        st.download_button("📊 Download Excel", output.getvalue(), file_name="retirement_model.xlsx", use_container_width=True)
+        st.download_button("📊 Download Excel", output.getvalue(), file_name="retirement_model.xlsx", width="stretch")
     except Exception:
-        # Fallback to CSV if Excel engine is missing
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📄 Download CSV", csv, "retirement_model.csv", "text/csv", use_container_width=True)
-        st.caption("Excel engine not found; providing CSV.")
+        st.download_button("📄 Download CSV", csv, "model.csv", "text/csv", width="stretch")
 
 with st.expander("🔎 View Master Audit Ledger", expanded=False):
     format_dict = {col: "${:,.0f}" for col in df.columns if col not in ["Age", "Year"]}
-    st.dataframe(df.style.format(format_dict), use_container_width=True)
+    st.dataframe(df.style.format(format_dict), width="stretch") # Updated syntax
