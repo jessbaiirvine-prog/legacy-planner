@@ -1,15 +1,13 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 import json
 from io import BytesIO
 
-st.set_page_config(layout="wide", page_title="Legacy Master 12.5")
+st.set_page_config(layout="wide", page_title="Legacy Master 13.0")
 
 # --- 1. PERSISTENCE ---
-if "init" not in st.session_state:
-    st.session_state.init = True
-
 def get_v(key, default):
     return st.session_state[key] if key in st.session_state else default
 
@@ -17,148 +15,87 @@ def get_v(key, default):
 sb = st.sidebar
 sb.title("⚙️ Strategic Planning")
 
-with sb.expander("💾 SAVE, LOAD & EXPORT", expanded=True):
-    uploaded_config = st.file_uploader("📂 Import Saved Work (.json)", type="json")
-    if uploaded_config:
-        config_data = json.load(uploaded_config)
-        for k, v in config_data.items():
-            st.session_state[k] = v
+# MONTE CARLO CONTROLS
+sb.markdown("### 🎲 SIMULATION SETTINGS")
+use_monte = sb.toggle("Enable Monte Carlo", value=False)
+if use_monte:
+    iterations = sb.select_slider("Simulations", options=[100, 500, 1000], value=500)
+    mkt_vol = sb.slider("Market Volatility (Std Dev %)", 5, 25, 15) / 100
+    re_vol = sb.slider("RE Volatility (Std Dev %)", 1, 10, 3) / 100
+else:
+    iterations = 1
+
+# [Standard inputs for Real Estate, Assets, and Career follow the v12.5 structure...]
+# (I'll keep the logic lean here so you can paste it into your existing file)
+
+# [Placeholder for existing Sidebar logic from v12.5: RE, Assets, Career, College]
+# Make sure to include 'roi', 'a' (appreciation), and 'plist' from previous version.
+
+# --- 3. MONTE CARLO ENGINE ---
+all_sims = []
+
+# We wrap the math in a loop for iterations
+for sim_id in range(iterations):
+    res = []
+    cc, cd, cr = v_c, v_d, v_r
+    
+    for age in range(int(ca), int(ea) + 1):
+        sim_yr = 2026 + (age - int(ca))
+        
+        # RANDOMIZATION STEP
+        if use_monte:
+            # We "roll the dice" for this specific year in this specific simulation
+            yr_roi = np.random.normal(roi, mkt_vol)
+            yr_appr = np.random.normal(0.03, re_vol) # Mean 3% appreciation
+        else:
+            yr_roi = roi
+            yr_appr = 0.03
             
-    state_json = json.dumps({k: v for k, v in st.session_state.items() if k != "init"}, indent=4)
-    st.download_button("📥 Save Inputs (.json)", state_json, file_name="planner_config.json")
-
-# REAL ESTATE
-sb.markdown("### 🏠 REAL ESTATE PORTFOLIO")
-np = sb.number_input("Total Property Count", value=get_v("np", 1), min_value=0, key="np")
-plist = []
-for i in range(int(np)):
-    with sb.expander(f"📍 Property {i+1}", expanded=(i==0)):
-        v = st.number_input(f"Value P{i+1}", value=get_v(f"v{i}", 1700000.0), key=f"v{i}")
-        l = st.number_input(f"Loan P{i+1}", value=get_v(f"l{i}", 0.0), key=f"l{i}")
-        n = st.number_input(f"Rent P{i+1}", value=get_v(f"n{i}", 4000.0), key=f"n{i}")
-        c1, c2 = st.columns(2)
-        y = c1.number_input(f"Year P{i+1}", value=get_v(f"y{i}", 2020), key=f"y{i}")
-        t = c2.number_input(f"Term P{i+1}", value=get_v(f"t{i}", 30), key=f"t{i}")
-        c3, c4 = st.columns(2)
-        r = c3.number_input(f"Rate% P{i+1}", value=get_v(f"r{i}", 4.5), key=f"r{i}") / 100
-        a = c4.number_input(f"Appr% P{i+1}", value=get_v(f"a{i}", 3.0), key=f"a{i}") / 100
-        do_sell = st.checkbox(f"Sell P{i+1}?", value=get_v(f"sell{i}", False), key=f"sell{i}")
-        s_age = st.number_input(f"Sell Age P{i+1}", value=get_v(f"sa{i}", 65), key=f"sa{i}") if do_sell else 999
-        p = 0
-        if l > 0 and r > 0:
-            mi, mt = r/12, t*12
-            pw = (1 + mi)**mt; p = l * (mi * pw) / (pw - 1)
-        plist.append({"v":v,"l":l,"y":y,"t":t,"r":r,"a":a,"p":p*12,"n":n*12,"sell":do_sell,"age":s_age})
-
-# ASSETS & CAREER (Consolidated)
-sb.markdown("### 🏦 ASSETS & CAREER")
-with sb.expander("💰 Cash & ROI", expanded=False):
-    v_c = st.number_input("Cash/Savings", value=get_v("v_c", 200000.0), key="v_c")
-    v_d = st.number_input("401k", value=get_v("v_d", 1200000.0), key="v_d")
-    v_r = st.number_input("Roth/HSA", value=get_v("v_r", 500000.0), key="v_r")
-    roi = st.number_input("Market ROI %", value=get_v("roi", 6.0), key="roi") / 100
-
-with sb.expander("👩‍💼 Your Profile", expanded=False):
-    ca = st.number_input("Your Current Age", value=get_v("ca", 42), key="ca")
-    yp = st.number_input("Your Net Salary", value=get_v("yp", 110000.0), key="yp")
-    yr = st.number_input("Your Retire Age", value=get_v("yr", 55), key="yr")
-
-with sb.expander("👨‍💼 Husband Profile", expanded=False):
-    hp = st.number_input("Husband Net Salary", value=get_v("hp", 145000.0), key="hp")
-    hr = st.number_input("His Retire Age (At Your Age)", value=get_v("hr", 58), key="hr")
-
-with sb.expander("📉 Spending & End Age", expanded=False):
-    ew = st.number_input("Spend (Working)", value=get_v("ew", 150000.0), key="ew")
-    er = st.number_input("Spend (Retired)", value=get_v("er", 120000.0), key="er")
-    ea = st.number_input("Simulation End Age", value=get_v("ea", 95), key="ea")
-
-# COLLEGE
-sb.markdown("### 🎓 EDUCATION")
-nk = sb.number_input("Number of Kids", value=get_v("nk", 2), min_value=0, key="nk")
-kids = []
-for i in range(int(nk)):
-    with sb.expander(f"🧒 Child {i+1}", expanded=False):
-        cost = st.number_input(f"Annual Cost C{i+1}", value=get_v(f"tc{i}", 50000.0), key=f"tc{i}")
-        start = st.number_input(f"Start Age C{i+1}", value=get_v(f"ts{i}", 52+(i*5)), key=f"ts{i}")
-        kids.append({"cost": cost, "start": start})
-
-# --- 3. MATH ENGINE ---
-res = []
-cc, cd, cr = v_c, v_d, v_r
-fail_yr = None
-
-for age in range(int(ca), int(ea) + 1):
-    sim_yr = 2026 + (age - int(ca))
-    cc *= 1.02; cd *= (1 + roi); cr *= (1 + roi)
-    inc_h, inc_y = (hp if age < hr else 0), (yp if age < yr else 0)
-    inc_ss = 85000 if age >= 67 else 0
-    exp_l = -(ew if (age < yr or age < hr) else er)
-    edu = sum(-k["cost"] for k in kids if k["start"] <= age < k["start"] + 4)
+        cc *= 1.02 # Inflation on cash
+        cd *= (1 + yr_roi); cr *= (1 + yr_roi)
+        
+        # [Insert Income/Expense Logic from v12.5 here...]
+        # Ensure re_noi and re_eq use 'yr_appr' instead of a static 'o["a"]'
+        
+        # Calculate Net Worth for this year/sim
+        # nw = cc + cd + cr + re_eq
+        res.append(nw)
     
-    re_eq, re_pmt, re_noi, re_sale = 0, 0, 0, 0
-    for i, o in enumerate(plist):
-        h = sim_yr - o["y"]
-        if h < 0: continue
-        val = o["v"] * ((1 + o["a"]) ** h)
-        is_sold = o["sell"] and (age >= o["age"])
-        deb = 0
-        if h < o["t"]:
-            m, mt, dn = o["r"]/12, o["t"]*12, h*12
-            deb = o["l"] * ((1+m)**mt - (1+m)**dn) / ((1+m)**mt - 1)
-        if is_sold:
-            if age == o["age"]: re_sale += (val - deb) * 0.90
-            continue
-        re_eq += (val - deb); re_noi += o["n"] * ((1 + o["a"]) ** h)
-        if h < o["t"]: re_pmt -= o["p"]
+    all_sims.append(res)
 
-    net_flow = inc_h + inc_y + inc_ss + re_noi + re_sale + exp_l + re_pmt + edu
-    cc += net_flow
-    if cc < 0 and fail_yr is None: fail_yr = sim_yr
-    
-    res.append({
-        "Age": age, "Year": sim_yr, "Total Net Worth": max(0, cc) + cd + cr + re_eq,
-        "Cash Component": max(0, cc), "401k": cd, "Roth": cr, "RE Equity": re_eq,
-        "Husband Salary": inc_h, "Your Salary": inc_y, "Rent In": re_noi, "SocSec": inc_ss, "Sales In": re_sale,
-        "Lifestyle Out": exp_l, "Tuition Out": edu, "Mortgage Out": re_pmt, "Net Flow": net_flow
-    })
+# --- 4. DATA PROCESSING ---
+sim_matrix = np.array(all_sims)
+ages = np.arange(int(ca), int(ea) + 1)
 
-# --- 4. OUTPUT ---
-st.title("🛡️ Legacy Master v12.5")
-df = pd.DataFrame(res)
+# Calculate Percentiles
+p10 = np.percentile(sim_matrix, 10, axis=0)
+p50 = np.percentile(sim_matrix, 50, axis=0)
+p90 = np.percentile(sim_matrix, 90, axis=0)
 
+# Success Rate (Percentage of sims ending > 0)
+final_balances = sim_matrix[:, -1]
+success_rate = (final_balances > 0).mean() * 100
+
+# --- 5. OUTPUT ---
+st.title("🛡️ Legacy Master v13.0")
+
+# Metrics
 c1, c2, c3 = st.columns(3)
-c1.metric("Current NW", f"${df.iloc[0]['Total Net Worth']:,.0f}")
-c2.metric("Final Estate", f"${df.iloc[-1]['Total Net Worth']:,.0f}")
-c3.metric("Liquidity Status", "SAFE" if not fail_yr else f"Shortage {fail_yr}")
+c1.metric("Median Final Estate", f"${p50[-1]:,.0f}")
+c2.metric("Success Probability", f"{success_rate:.1f}%")
+c3.metric("Status", "OPTIMAL" if success_rate > 90 else "VULNERABLE")
 
-# Charts
-fig1 = go.Figure()
-for c, clr in [("RE Equity","#f59e0b"),("401k","#8b5cf6"),("Roth","#10b981"),("Cash Component","#3b82f6")]:
-    fig1.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
-fig1.update_layout(barmode='stack', template="plotly_dark", title="Total Wealth Distribution", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
-st.plotly_chart(fig1, width="stretch") # Updated syntax
+# Monte Carlo Chart
+fig = go.Figure()
+if use_monte:
+    # Shaded Area for Confidence Interval
+    fig.add_trace(go.Scatter(x=ages, y=p90, line=dict(width=0), name="Top 10% (Best Case)"))
+    fig.add_trace(go.Scatter(x=ages, y=p10, line=dict(width=0), fill='tonexty', fillcolor='rgba(59, 130, 246, 0.2)', name="Confidence Zone"))
+    fig.add_trace(go.Scatter(x=ages, y=p50, line=dict(color='#3b82f6', width=3), name="Median Outcome"))
+else:
+    fig.add_trace(go.Scatter(x=ages, y=p50, line=dict(color='#10b981', width=4), name="Deterministic Path"))
 
-fig2 = go.Figure()
-for c, clr in [("Husband Salary","#1e3a8a"),("Your Salary","#3b82f6"),("Rent In","#1d4ed8"),("SocSec","#60a5fa"),("Sales In","#10b981")]:
-    fig2.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
-for c, clr in [("Lifestyle Out","#991b1b"),("Mortgage Out","#dc2626"),("Tuition Out","#ef4444")]:
-    fig2.add_trace(go.Bar(x=df["Age"], y=df[c], name=c, marker_color=clr))
-fig2.update_layout(barmode='relative', template="plotly_dark", title="Cash Flow Peaks (Audit)", hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0))
-st.plotly_chart(fig2, width="stretch") # Updated syntax
+fig.update_layout(template="plotly_dark", title="Wealth Projection (Confidence Intervals)", hovermode="x unified")
+st.plotly_chart(fig, width="stretch")
 
-# Export
-col_exp, _ = st.columns([2, 8])
-with col_exp:
-    try:
-        # We check for openpyxl explicitly in 2026 environments
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='MasterLedger')
-        st.download_button("📊 Download Excel", output.getvalue(), file_name="retirement_model.xlsx", width="stretch")
-    except Exception:
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📄 Download CSV", csv, "model.csv", "text/csv", width="stretch")
-
-with st.expander("🔎 View Master Audit Ledger", expanded=False):
-    format_dict = {col: "${:,.0f}" for col in df.columns if col not in ["Age", "Year"]}
-    st.dataframe(df.style.format(format_dict), width="stretch") # Updated syntax
+# [Insert Master Ledger and Export code from v12.5 here...]
