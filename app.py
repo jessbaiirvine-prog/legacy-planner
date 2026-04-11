@@ -133,9 +133,9 @@ st.title("🛡️ Legacy Master v12.3")
 df = pd.DataFrame(res)
 
 c1, c2, c3 = st.columns(3)
-output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='MasterLedger')
+c1.metric("Current NW", f"${df.iloc[0]['Total Net Worth']:,.0f}")
+c2.metric("Final Estate", f"${df.iloc[-1]['Total Net Worth']:,.0f}")
+c3.metric("Liquidity Status", "SAFE" if not fail_yr else f"Shortage {fail_yr}")
 
 # Chart 1
 fig1 = go.Figure()
