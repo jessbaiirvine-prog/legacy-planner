@@ -4,17 +4,16 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 
-st.set_page_config(layout="wide", page_title="Legacy Master 28.0", page_icon="🏠")
+st.set_page_config(layout="wide", page_title="Legacy Master 29.0", page_icon="🏠")
 
-# --- 1. ROBUST INITIALIZATION ---
-DEFAULT_PROP = {"v": 1700000.0, "b": 1000000.0, "l": 800000.0, "p_year": 2020, "term": 30, "rate": 0.045, "r": 6500.0, "a": 0.03, "liq": True}
+# --- 1. INITIALIZATION ---
+DEFAULT_PROP = {"v": 1700000.0, "b": 1000000.0, "l": 800000.0, "p_year": 2020, "term": 30, "rate": 0.045, "r": 6500.0, "a": 0.03, "liq_age": 55, "liq_active": True}
 DEFAULTS = {
     "v_c": 200000.0, "v_d": 1200000.0, "v_r": 500000.0,
-    "tax_work": 0.30, "tax_ret": 0.20, "cap_gains": 0.20, "target_roi": 0.07,
-    "p_tax": 0.012, "p_maint": 0.01, "p_mgmt": 0.08, "liq_age": 55,
+    "tax_work": 0.30, "tax_ret": 0.20, "cap_gains": 0.20, "target_roi": 0.07, "volatility": 0.15,
+    "p_tax": 0.012, "p_maint": 0.01, "p_mgmt": 0.08,
     "props": [DEFAULT_PROP.copy()],
-    "k1_start": 18, "k1_end": 22, "k1_cost": 45000.0,
-    "k2_start": 18, "k2_end": 22, "k2_cost": 45000.0,
+    "k1_start": 18, "k1_end": 22, "k1_cost": 45000.0, "k2_start": 18, "k2_end": 22, "k2_cost": 45000.0,
     "ca": 42, "ea": 95, "hp": 145000.0, "hr": 58, "yp": 110000.0, "yr": 55, "ew": 150000.0, "er": 120000.0, "ss": 85000.0
 }
 
@@ -22,76 +21,68 @@ if "inputs" not in st.session_state:
     st.session_state.inputs = DEFAULTS.copy()
 
 inp = st.session_state.inputs
-
 sb = st.sidebar
+
+# --- 2. SIDEBAR (LHS) ---
 sb.title("💾 Scenario Setup")
 uploaded_file = sb.file_uploader("Upload Scenario", type="json")
 if uploaded_file:
     inp.update(json.load(uploaded_file))
     st.rerun()
 
-# --- 2. SIDEBAR (LHS) ---
-with sb.expander("🎲 Simulations", expanded=True):
+with sb.expander("🎲 Risk & Volatility", expanded=True):
     use_monte = st.toggle("Monte Carlo", value=True)
     n_sims = st.slider("Simulations", 10, 2000, 500)
-    inp["target_roi"] = st.slider("Market ROI %", 0.0, 15.0, float(inp.get("target_roi", 0.07)*100))/100
+    inp["target_roi"] = st.slider("Expected ROI %", 0.0, 15.0, float(inp.get("target_roi", 0.07)*100))/100
+    inp["volatility"] = st.slider("Market Volatility %", 5, 30, int(inp.get("volatility", 0.15)*100))/100
 
-with sb.expander("🏠 Real Estate Engine", expanded=True):
-    inp["liq_age"] = st.number_input("Liquidation Age", 45, 85, int(inp.get("liq_age", 55)))
+with sb.expander("🏠 Real Estate Portfolio", expanded=True):
     n_p = st.number_input("Property Count", 1, 10, len(inp["props"]))
     while len(inp["props"]) < n_p: inp["props"].append(DEFAULT_PROP.copy())
     inp["props"] = inp["props"][:n_p]
     
     for i, p in enumerate(inp["props"]):
         st.markdown(f"**Prop {i+1}**")
-        for k, v in DEFAULT_PROP.items(): p.setdefault(k, v) # Fill missing keys
         p["v"] = st.number_input(f"Value {i+1}", value=float(p["v"]), key=f"v{i}")
-        p["l"] = st.number_input(f"Orig. Loan {i+1}", value=float(p["l"]), key=f"l{i}")
-        p["p_year"] = st.number_input(f"Year Bought {i+1}", 1990, 2026, int(p["p_year"]), key=f"py{i}")
-        p["rate"] = st.number_input(f"Rate % {i+1}", 0.1, 15.0, float(p["rate"]*100), key=f"r_rate{i}") / 100
-        p["r"] = st.number_input(f"Rent {i+1}/mo", value=float(p["r"]), key=f"rent{i}")
-        p["liq"] = st.checkbox(f"Sell at {inp['liq_age']}?", value=p["liq"], key=f"liq{i}")
+        p["l"] = st.number_input(f"Orig Loan {i+1}", value=float(p["l"]), key=f"l{i}")
+        p["r"] = st.number_input(f"Rent {i+1}", value=float(p["r"]), key=f"rent{i}")
+        
+        col1, col2 = st.columns(2)
+        p["liq_active"] = col1.checkbox("Liquidate?", value=p.get("liq_active", True), key=f"la{i}")
+        p["liq_age"] = col2.number_input("at Age", 45, 95, int(p.get("liq_age", 55)), key=f"lage{i}")
 
-with sb.expander("🎓 Education Timing", expanded=True):
-    st.caption("Aaron (Age Offset: -32)")
-    inp["k1_start"] = st.number_input("Aaron Start Age", 17, 25, int(inp["k1_start"]))
-    inp["k1_end"] = st.number_input("Aaron End Age", 18, 30, int(inp["k1_end"]))
+with sb.expander("🎓 Education Timing", expanded=False):
     inp["k1_cost"] = st.number_input("Aaron Tuition", value=float(inp["k1_cost"]))
-    st.caption("Alvin (Age Offset: -30)")
-    inp["k2_start"] = st.number_input("Alvin Start Age", 17, 25, int(inp["k2_start"]))
-    inp["k2_end"] = st.number_input("Alvin End Age", 18, 30, int(inp["k2_end"]))
     inp["k2_cost"] = st.number_input("Alvin Tuition", value=float(inp["k2_cost"]))
-
-with sb.expander("💵 Income & Household (LHS)", expanded=False):
-    inp["hp"] = st.number_input("Husband Salary", value=float(inp.get("hp", 145000)))
-    inp["yp"] = st.number_input("Your Salary", value=float(inp.get("yp", 110000)))
-    inp["ew"] = st.number_input("Working Spend", value=float(inp.get("ew", 150000)))
-    inp["er"] = st.number_input("Retire Spend", value=float(inp.get("er", 120000)))
 
 # --- 3. MATH ENGINE ---
 @st.cache_data
 def run_engine(p_in, sims, monte):
-    hist = [{"S": 0.12, "R": 0.04}, {"S": -0.15, "R": -0.05}, {"S": 0.05, "R": 0.02}]
     all_runs = []
     for _ in range(sims):
         cc, cd, cr = p_in["v_c"], p_in["v_d"], p_in["v_r"]
         props = [pr.copy() for pr in p_in["props"]]
         path = []
+        
         for age in range(p_in["ca"], p_in["ea"] + 1):
             h = age - p_in["ca"]; yr = 2026 + h
-            env = np.random.choice(hist) if monte else {"S": p_in["target_roi"], "R": 0.03}
+            # True Volatility: Normal distribution centered on ROI
+            market_return = np.random.normal(p_in["target_roi"], p_in["volatility"]) if monte else p_in["target_roi"]
+            
             re_val, re_eq, re_cf = 0, 0, 0
             for pr in props:
                 if pr["v"] > 0:
-                    mi, mt = pr["rate"]/12, pr["term"]*12
+                    mi, mt = pr.get("rate", 0.045)/12, pr.get("term", 30)*12
                     pmt_mo = pr["l"] * (mi * (1 + mi)**mt) / ((1 + mi)**mt - 1) if pr["l"] > 0 else 0
-                    mos_passed = (yr - pr["p_year"]) * 12
+                    mos_passed = (yr - pr.get("p_year", 2020)) * 12
                     rem_bal = pr["l"] * ((1 + mi)**mt - (1 + mi)**max(0, mos_passed)) / ((1 + mi)**mt - 1) if mos_passed < mt else 0
                     pmt_ann = (pmt_mo * 12) if mos_passed < mt else 0
                     cv = pr["v"] * ((1 + pr.get("a", 0.03))**h)
                     
-                    if age == p_in["liq_age"] and pr.get("liq"):
-                        cc += (cv - rem_bal - (max(0, cv - pr.get("b", 1000000)) * p_in["cap_gains"])); pr["v"] = 0
+                    # Individualized Liquidation Check
+                    if age == pr.get("liq_age", 55) and pr.get("liq_active"):
+                        cc += (cv - rem_bal - (max(0, cv - pr.get("b", 1000000)) * p_in["cap_gains"]))
+                        pr["v"] = 0 # Mark as sold
                     else:
                         re_val += cv; re_eq += (cv - rem_bal)
                         noi = (pr["r"]*12) - (cv*(p_in["p_tax"]+p_in["p_maint"])) - (pr["r"]*12*p_in["p_mgmt"])
@@ -109,7 +100,11 @@ def run_engine(p_in, sims, monte):
                 gap = abs(net_flow); fc = min(cc, gap); cc -= fc; gap -= fc
                 if gap > 0: d = min(cd, gap/(1-p_in["tax_ret"])); cd -= d; draw = d
             else: cc += net_flow
-            cd *= (1 + env["S"]); cc *= 1.02
+
+            # Apply market return to liquid assets
+            cd *= (1 + market_return)
+            cc *= 1.02 # Cash stays at a stable 2%
+            
             path.append({"Age": age, "NW": cc+cd+cr+re_eq, "Sal": sal, "RE_NOI": re_cf, "Tax": -tax, "Spend": -spend, "Draw": draw, "RE_Val": re_val, "Liq": cc+cd+cr})
         all_runs.append(path)
     return all_runs
@@ -120,29 +115,26 @@ p5, p50, p95 = np.percentile(nw_mat, [5, 50, 95], axis=0)
 med_path = pd.DataFrame(results[len(results)//2])
 
 # --- 4. RHS DASHBOARD ---
-st.title("🛡️ Legacy Master v28.0")
+st.title("🛡️ Legacy Master v29.0")
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Median Estate", f"${p50[-1]:,.0f}"); m2.metric("Success Rate", f"{(nw_mat[:,-1]>0).mean()*100:.1f}%"); m3.metric("Worst Case (5%)", f"${p5[-1]:,.0f}"); m4.metric("Simulations", n_sims)
 
-# Prob Chart
 fig_nw = go.Figure()
 fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p95, line=dict(width=0), showlegend=False))
-fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p5, fill='tonexty', fillcolor='rgba(16,185,129,0.1)', name="90% Risk Band"))
+fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p5, fill='tonexty', fillcolor='rgba(239, 68, 68, 0.1)', name="5th Percentile (Crash)"))
 fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median NW"))
-st.plotly_chart(fig_nw.update_layout(title="Net Worth Probability & Mortgage Pay-down", template="plotly_dark"), use_container_width=True)
+st.plotly_chart(fig_nw.update_layout(title="Wealth Probability (With Downside Volatility)", template="plotly_dark"), use_container_width=True)
 
-# CF Chart
 fig_cf = go.Figure()
 for col, color, name in [("Sal", "#34d399", "Income"), ("RE_NOI", "#60a5fa", "Rent (Net P&I)"), ("Tax", "#f87171", "Taxes"), ("Spend", "#fbbf24", "Expenses/College"), ("Draw", "#8b5cf6", "401k Draw")]:
     fig_cf.add_trace(go.Bar(x=med_path["Age"], y=med_path[col], name=name, marker_color=color))
 fig_cf.add_trace(go.Scatter(x=med_path["Age"], y=med_path["Sal"]+med_path["RE_NOI"]+med_path["Tax"]+med_path["Spend"], name="Net Flow", line=dict(color="white", width=2, dash='dot')))
-st.plotly_chart(fig_cf.update_layout(barmode='relative', title="Annual Cash Flow", template="plotly_dark"), use_container_width=True)
+st.plotly_chart(fig_cf.update_layout(barmode='relative', title="Annual Cash Flow Breakdown", template="plotly_dark"), use_container_width=True)
 
-# Assets Chart
 fig_eq = go.Figure()
-fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["RE_Val"], name="RE Assets", marker_color="#1e40af"))
+fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["RE_Val"], name="RE Market Value", marker_color="#1e40af"))
 fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["Liq"], name="Liquid Assets", marker_color="#047857"))
 fig_eq.add_trace(go.Scatter(x=med_path["Age"], y=med_path["NW"], name="Total Net Worth", line=dict(color="#fbbf24", width=3)))
-st.plotly_chart(fig_eq.update_layout(barmode='stack', title="Asset Composition", template="plotly_dark"), use_container_width=True)
+st.plotly_chart(fig_eq.update_layout(barmode='stack', title="Asset Composition & Liquidation Impact", template="plotly_dark"), use_container_width=True)
 
 st.download_button("📥 Save JSON", data=json.dumps(inp), file_name="scenario.json")
