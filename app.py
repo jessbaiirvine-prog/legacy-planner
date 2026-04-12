@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 
-st.set_page_config(layout="wide", page_title="Legacy Master 43.0", page_icon="📈")
+st.set_page_config(layout="wide", page_title="Legacy Master 44.0", page_icon="📈")
 
 # --- 1. GLOBAL DEFAULTS & DEEP SCHEMA MIGRATION ---
 DEFAULT_PROP = {
@@ -29,13 +29,11 @@ if "inputs" not in st.session_state:
 
 inp = st.session_state.inputs
 
-# CRITICAL: Deep Migration Fix to prevent KeyErrors
 for key, val in DEFAULTS.items():
-    if key not in inp:
-        inp[key] = val
+    if key not in inp: inp[key] = val
 
 for p in inp["props"]:
-    if "r" in p and "rent" not in p: p["rent"] = p.pop("r") # Legacy key mapping
+    if "r" in p and "rent" not in p: p["rent"] = p.pop("r") 
     for k_prop, v_prop in DEFAULT_PROP.items():
         if k_prop not in p: p[k_prop] = v_prop
 
@@ -87,22 +85,17 @@ with sb.expander("🏠 Real Estate Assets", expanded=True):
 
 with sb.expander("💵 Income, SS & Education", expanded=True):
     st.markdown("**Employment Income**")
-    inp["hp"] = st.number_input("Husband Gross Salary", value=float(inp["hp"]))
-    inp["hr"] = st.number_input("Husband Retire Age", value=int(inp["hr"]))
-    inp["yp"] = st.number_input("Your Gross Salary", value=float(inp["yp"]))
-    inp["yr"] = st.number_input("Your Retire Age", value=int(inp["yr"]))
+    inp["hp"], inp["hr"] = st.number_input("Husband Gross Salary", value=float(inp["hp"])), st.number_input("Husband Retire Age", value=int(inp["hr"]))
+    inp["yp"], inp["yr"] = st.number_input("Your Gross Salary", value=float(inp["yp"])), st.number_input("Your Retire Age", value=int(inp["yr"]))
     
     st.markdown("**Social Security**")
     inp["ss"] = st.number_input("Est. Total SS/yr", value=float(inp["ss"]))
     
     st.markdown("**Education Costs**")
     c1, c2 = st.columns(2)
-    inp["k1_s_yr"] = c1.number_input("Aaron Start Yr", value=int(inp["k1_s_yr"]))
-    inp["k1_e_yr"] = c2.number_input("Aaron End Yr", value=int(inp["k1_e_yr"]))
+    inp["k1_s_yr"], inp["k1_e_yr"] = c1.number_input("Aaron Start", value=int(inp["k1_s_yr"])), c2.number_input("Aaron End", value=int(inp["k1_e_yr"]))
     inp["k1_cost"] = st.number_input("Aaron Annual Cost $", value=float(inp["k1_cost"]))
-    
-    inp["k2_s_yr"] = c1.number_input("Alvin Start Yr", value=int(inp["k2_s_yr"]))
-    inp["k2_e_yr"] = c2.number_input("Alvin End Yr", value=int(inp["k2_e_yr"]))
+    inp["k2_s_yr"], inp["k2_e_yr"] = c1.number_input("Alvin Start", value=int(inp["k2_s_yr"])), c2.number_input("Alvin End", value=int(inp["k2_e_yr"]))
     inp["k2_cost"] = st.number_input("Alvin Annual Cost $", value=float(inp["k2_cost"]))
 
 with sb.expander("🛡️ Living Expenses & Taxes", expanded=True):
@@ -111,7 +104,7 @@ with sb.expander("🛡️ Living Expenses & Taxes", expanded=True):
     inp["tax_work"] = st.slider("Work Tax Rate %", 10.0, 50.0, float(inp["tax_work"]*100))/100
     inp["tax_ret"] = st.slider("Retirement Tax Rate %", 10.0, 50.0, float(inp["tax_ret"]*100))/100
 
-# --- 3. MATH ENGINE (Uncached for instant reactivity) ---
+# --- 3. MATH ENGINE ---
 def run_simulation(p_in):
     sims = int(p_in["n_sims"])
     results = []
@@ -126,22 +119,16 @@ def run_simulation(p_in):
             eq_return = np.random.normal(p_in["target_roi"], p_in["volatility"])
             c_return = p_in["cash_roi"]
             
-            total_re_val, total_re_eq, annual_re_noi, annual_mortgage = 0, 0, 0, 0
+            total_re_val, total_re_eq, annual_true_noi, annual_mortgage, annual_ncf = 0, 0, 0, 0, 0
+            
             for pr in props:
                 if pr["v"] > 0:
-                    mi = pr["rate"] / 12
-                    mt = pr["term"] * 12
+                    mi, mt = pr["rate"] / 12, pr["term"] * 12
                     pmt_mo = pr["l"] * (mi * (1 + mi)**mt) / ((1 + mi)**mt - 1) if pr["l"] > 0 else 0
                     
-                    years_held = current_year - pr.get("p_year", 2020)
-                    mos_passed = years_held * 12
-                    
-                    if mos_passed < mt:
-                        rem_bal = pr["l"] * ((1 + mi)**mt - (1 + mi)**mos_passed) / ((1 + mi)**mt - 1)
-                        mortgage_ann = pmt_mo * 12
-                    else:
-                        rem_bal = 0
-                        mortgage_ann = 0
+                    mos_passed = (current_year - pr.get("p_year", 2020)) * 12
+                    rem_bal = pr["l"] * ((1 + mi)**mt - (1 + mi)**mos_passed) / ((1 + mi)**mt - 1) if mos_passed < mt else 0
+                    mortgage_ann = pmt_mo * 12 if mos_passed < mt else 0
                     
                     cur_v = pr["v"] * ((1 + pr["a"])**year_idx)
                     
@@ -153,16 +140,24 @@ def run_simulation(p_in):
                     else:
                         total_re_val += cur_v
                         total_re_eq += (cur_v - rem_bal)
-                        gross_rent = pr["rent"] * 12
-                        ops_expenses = (cur_v * pr["tax_rate"]) + pr["ins"] + (cur_v * pr["maint"]) + (gross_rent * pr["mgmt"])
-                        annual_re_noi += (gross_rent - ops_expenses - mortgage_ann)
+                        
+                        # BUG FIX: Inflating rent to match expense inflation
+                        inflated_rent = (pr["rent"] * 12) * ((1 + p_in["inflation"])**year_idx)
+                        
+                        ops_expenses = (cur_v * pr["tax_rate"]) + pr["ins"] + (cur_v * pr["maint"]) + (inflated_rent * pr["mgmt"])
+                        prop_noi = inflated_rent - ops_expenses
+                        prop_ncf = prop_noi - mortgage_ann
+                        
+                        annual_true_noi += prop_noi
                         annual_mortgage += mortgage_ann
+                        annual_ncf += prop_ncf
 
             income_h = p_in["hp"] if age < p_in["hr"] else 0
             income_y = p_in["yp"] if age < p_in["yr"] else 0
             ss_income = p_in["ss"] if age >= 67 else 0
             
-            gross_taxable = income_h + income_y + max(0, annual_re_noi) + ss_income
+            # Taxed on NOI (before debt service), standard tax logic
+            gross_taxable = income_h + income_y + max(0, annual_true_noi) + ss_income
             effective_tax = gross_taxable * (p_in["tax_work"] if (income_h + income_y) > 0 else p_in["tax_ret"])
             
             edu_cost = 0
@@ -172,11 +167,11 @@ def run_simulation(p_in):
             base_spend = (p_in["ew"] if (age < p_in["hr"] or age < p_in["yr"]) else p_in["er"])
             inflated_spend = base_spend * ((1 + p_in["inflation"])**year_idx)
             
+            # Cash flow utilizes NCF (after debt service)
             total_outflow = inflated_spend + edu_cost + effective_tax
-            net_cash_flow = gross_taxable - total_outflow
-            organic_net = (income_h + income_y + ss_income + annual_re_noi) - (inflated_spend + edu_cost + effective_tax)
+            net_cash_flow = (income_h + income_y + ss_income + annual_ncf) - total_outflow
             
-            from_cash = 0; from_brok = 0; draw_from_ret = 0
+            draw_from_ret = 0
             if net_cash_flow < 0:
                 deficit = abs(net_cash_flow)
                 from_cash = min(cash, deficit)
@@ -191,34 +186,31 @@ def run_simulation(p_in):
             else:
                 cash += net_cash_flow
 
-            brok *= (1 + eq_return)
-            ret *= (1 + eq_return)
-            cash *= (1 + c_return)
+            brok *= (1 + eq_return); ret *= (1 + eq_return); cash *= (1 + c_return)
             
             path.append({
                 "Age": age, "Year": current_year, "NW": cash + brok + ret + total_re_eq + p_in["v_residence"],
-                "Liq": cash + brok + ret, "RE_Eq": total_re_eq, "NOI": annual_re_noi, "Mortgage": annual_mortgage, 
-                "Draw": draw_from_ret, "Spend": inflated_spend, "Tax": effective_tax, "Edu": edu_cost,
-                "Salary": income_h + income_y, "SS": ss_income, "Organic_Net": organic_net,
-                "Total_Draw": from_cash + from_brok + draw_from_ret
+                "Liq": cash + brok + ret, "RE_Eq": total_re_eq, "NOI": annual_true_noi, 
+                "NCF": annual_ncf, "Mortgage": annual_mortgage, "Draw": draw_from_ret, 
+                "Spend": inflated_spend, "Tax": effective_tax, "Edu": edu_cost,
+                "Salary": income_h + income_y, "SS": ss_income, "Organic_Net": net_cash_flow
             })
         results.append(path)
     return results
 
 # --- 4. RHS DASHBOARD ---
-st.title("🛡️ Legacy Master v43.0: Wealth & Estate Advisory")
+st.title("🛡️ Legacy Master v44.0: Corrected Cash Flow")
 
 sim_data = run_simulation(inp)
 nw_curves = np.array([[yr["NW"] for yr in run] for run in sim_data])
 p5, p50, p95 = np.percentile(nw_curves, [5, 50, 95], axis=0)
 median_run = pd.DataFrame(sim_data[len(sim_data)//2])
 
-# Summary Metrics
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Median Estate @ 95", f"${p50[-1]:,.0f}")
 m2.metric("Success Rate", f"{(nw_curves[:,-1] > 0).mean()*100:.1f}%")
 m3.metric("Worst-Case (5%)", f"${p5[-1]:,.0f}")
-m4.metric("Peak RE Income", f"${median_run['NOI'].max():,.0f}/yr")
+m4.metric("Peak RE NCF", f"${median_run['NCF'].max():,.0f}/yr")
 
 # Chart 1: Wealth Probability
 st.plotly_chart(go.Figure([
@@ -227,37 +219,34 @@ st.plotly_chart(go.Figure([
     go.Scatter(x=median_run["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median Forecast")
 ]).update_layout(title="Estate Value Probability (Net Worth)", template="plotly_dark", hovermode="x unified"), use_container_width=True)
 
-# Chart 2: Real Estate Deep Dive
-st.header("🏢 Real Estate Portfolio Health")
+# Chart 2: Real Estate Deep Dive (Now mathematically correct CRE definitions)
+st.header("🏢 Real Estate Portfolio Health (NOI vs Debt)")
 re_fig = go.Figure()
-re_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["NOI"], name="Net Rental Cash Flow", marker_color="#34d399"))
-re_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Mortgage"], name="Mortgage Debt Service", marker_color="#f87171"))
-st.plotly_chart(re_fig.update_layout(barmode='relative', title="Net Rent vs Debt Service", template="plotly_dark"), use_container_width=True)
+re_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["NOI"], name="True NOI (Rent - OpEx)", marker_color="#34d399"))
+re_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Mortgage"], name="Debt Service", marker_color="#f87171"))
+re_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run["NCF"], name="Net Cash Flow (NCF)", line=dict(color="white", width=3)))
+st.plotly_chart(re_fig.update_layout(barmode='relative', title="Net Operating Income vs Debt Service", template="plotly_dark"), use_container_width=True)
 
-# Chart 3: Area Line Cash Flow (Retained from v42)
+# Chart 3: Baseline Liquidity Trail
 st.header("📋 Baseline Liquidity Trail")
 cf_fig = go.Figure()
 for col, color, lbl in [("Spend", "#fbbf24", "Expenses (Inflated)"), ("Tax", "#ef4444", "Taxes"), ("Draw", "#8b5cf6", "401k/IRA Withdrawals")]:
     cf_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run[col], name=lbl, fill='tozeroy', line=dict(color=color)))
 st.plotly_chart(cf_fig.update_layout(title="Annual Outflows & Liquidity Relief", template="plotly_dark"), use_container_width=True)
 
-# Chart 4: NEW - Detailed Inflow vs Outflow Bar Chart with Net Cash Flow Line
+# Chart 4: Inflow vs Outflow
 st.header("📊 Comprehensive Inflow vs Outflow")
 io_fig = go.Figure()
-# Inflows
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["Salary"], name="Salaries", marker_color="#10b981"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["SS"], name="Social Security", marker_color="#3b82f6"))
-io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.maximum(0, median_run["NOI"]), name="Positive RE Income", marker_color="#06b6d4"))
-# Outflows (Negative for Diverging Stack)
+# Now using actual NCF to show true real estate cash contribution or drag
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.maximum(0, median_run["NCF"]), name="Positive RE NCF", marker_color="#06b6d4"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Spend"] - median_run["Edu"], name="Living & Edu Exp", marker_color="#fbbf24"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Tax"], name="Taxes", marker_color="#ef4444"))
-io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.minimum(0, median_run["NOI"]), name="Negative RE Losses", marker_color="#f97316"))
-# Net Cash Flow Line
-io_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run["Organic_Net"], name="Net Cash Flow", line=dict(color="white", width=3, dash="dot")))
-
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.minimum(0, median_run["NCF"]), name="Negative RE NCF", marker_color="#f97316"))
+io_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run["Organic_Net"], name="Total Net Cash Flow", line=dict(color="white", width=3, dash="dot")))
 st.plotly_chart(io_fig.update_layout(barmode='relative', title="Inflow vs Outflow with Net Cash Flow Trajectory", template="plotly_dark", hovermode="x unified"), use_container_width=True)
 
-# Full Diagnostic Advisory
 st.divider()
 st.header("🧐 Strategic Diagnostic Advisory")
 c1, c2 = st.columns(2)
@@ -266,7 +255,7 @@ with c1:
     crisis = median_run[median_run["Organic_Net"] < 0]
     if not crisis.empty:
         st.error(f"Negative Organic Cash Flow Detected: Ages {crisis['Age'].min()} to {crisis['Age'].max()}")
-        st.write("During this period, your organic cash flow (salaries + rent + SS) is insufficient to cover expenses, taxes, and tuition. The engine is pulling liquidity from your cash, brokerage, and tax-deferred accounts.")
+        st.write("During this period, your organic cash flow (salaries + RE NCF + SS) is insufficient to cover expenses, taxes, and tuition. The engine is pulling liquidity from your cash, brokerage, and tax-deferred accounts.")
     else:
         st.success("✅ Portfolio is self-funding. Your cash flow completely covers your expenses without drawing down principal.")
 
@@ -276,4 +265,4 @@ with c2:
         st.warning("**Sequence of Returns Risk:** In 5% of our market simulations, you exhaust your liquid assets. Consider raising your cash reserve or reducing initial retirement spending.")
     st.info("**Mortgage Burn-off:** When your 30-year terms expire, your required debt service drops significantly, creating a substantial monthly surplus. Consider identifying specific reinvestment vehicles for this period.")
 
-st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v43.json")
+st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v44.json")
