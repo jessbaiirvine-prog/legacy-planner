@@ -4,10 +4,10 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 
-st.set_page_config(layout="wide", page_title="Legacy Master 27.0", page_icon="🏠")
+st.set_page_config(layout="wide", page_title="Legacy Master 28.0", page_icon="🏠")
 
-# --- 1. ROBUST INITIALIZATION (Anti-KeyError Logic) ---
-DEFAULT_PROP = {"v": 1000000.0, "b": 800000.0, "l": 500000.0, "p_year": 2020, "term": 30, "rate": 0.045, "r": 5000.0, "a": 0.03, "liq": True}
+# --- 1. ROBUST INITIALIZATION ---
+DEFAULT_PROP = {"v": 1700000.0, "b": 1000000.0, "l": 800000.0, "p_year": 2020, "term": 30, "rate": 0.045, "r": 6500.0, "a": 0.03, "liq": True}
 DEFAULTS = {
     "v_c": 200000.0, "v_d": 1200000.0, "v_r": 500000.0,
     "tax_work": 0.30, "tax_ret": 0.20, "cap_gains": 0.20, "target_roi": 0.07,
@@ -23,50 +23,50 @@ if "inputs" not in st.session_state:
 
 inp = st.session_state.inputs
 
-# Helper function to safely get values from old JSONs
-def safe_get(key, default):
-    return inp.get(key, default)
-
 sb = st.sidebar
 sb.title("💾 Scenario Setup")
 uploaded_file = sb.file_uploader("Upload Scenario", type="json")
 if uploaded_file:
-    uploaded_data = json.load(uploaded_file)
-    st.session_state.inputs.update(uploaded_data)
+    inp.update(json.load(uploaded_file))
     st.rerun()
 
 # --- 2. SIDEBAR (LHS) ---
 with sb.expander("🎲 Simulations", expanded=True):
     use_monte = st.toggle("Monte Carlo", value=True)
     n_sims = st.slider("Simulations", 10, 2000, 500)
-    inp["target_roi"] = st.slider("Market ROI %", 0.0, 15.0, float(safe_get("target_roi", 0.07)*100))/100
+    inp["target_roi"] = st.slider("Market ROI %", 0.0, 15.0, float(inp.get("target_roi", 0.07)*100))/100
 
 with sb.expander("🏠 Real Estate Engine", expanded=True):
-    inp["liq_age"] = st.number_input("Liquidation Age", 45, 85, int(safe_get("liq_age", 55)))
+    inp["liq_age"] = st.number_input("Liquidation Age", 45, 85, int(inp.get("liq_age", 55)))
     n_p = st.number_input("Property Count", 1, 10, len(inp["props"]))
-    
-    # Ensure prop list size and key safety
     while len(inp["props"]) < n_p: inp["props"].append(DEFAULT_PROP.copy())
     inp["props"] = inp["props"][:n_p]
     
     for i, p in enumerate(inp["props"]):
-        st.markdown(f"--- **Property {i+1}** ---")
-        # Ensure all keys exist in the specific property dictionary
-        for k, v in DEFAULT_PROP.items():
-            if k not in p: p[k] = v
-            
+        st.markdown(f"**Prop {i+1}**")
+        for k, v in DEFAULT_PROP.items(): p.setdefault(k, v) # Fill missing keys
         p["v"] = st.number_input(f"Value {i+1}", value=float(p["v"]), key=f"v{i}")
         p["l"] = st.number_input(f"Orig. Loan {i+1}", value=float(p["l"]), key=f"l{i}")
-        p["p_year"] = st.number_input(f"Year Purchased {i+1}", 1990, 2026, int(p["p_year"]), key=f"py{i}")
+        p["p_year"] = st.number_input(f"Year Bought {i+1}", 1990, 2026, int(p["p_year"]), key=f"py{i}")
         p["rate"] = st.number_input(f"Rate % {i+1}", 0.1, 15.0, float(p["rate"]*100), key=f"r_rate{i}") / 100
-        p["r"] = st.number_input(f"Rent {i+1}", value=float(p["r"]), key=f"rent{i}")
+        p["r"] = st.number_input(f"Rent {i+1}/mo", value=float(p["r"]), key=f"rent{i}")
         p["liq"] = st.checkbox(f"Sell at {inp['liq_age']}?", value=p["liq"], key=f"liq{i}")
 
-with sb.expander("🎓 Education & Household", expanded=False):
-    inp["hp"] = st.number_input("Husband Salary", value=float(safe_get("hp", 145000)))
-    inp["yp"] = st.number_input("Your Salary", value=float(safe_get("yp", 110000)))
-    inp["k1_cost"] = st.number_input("Aaron Tuition", value=float(safe_get("k1_cost", 45000)))
-    inp["k2_cost"] = st.number_input("Alvin Tuition", value=float(safe_get("k2_cost", 45000)))
+with sb.expander("🎓 Education Timing", expanded=True):
+    st.caption("Aaron (Age Offset: -32)")
+    inp["k1_start"] = st.number_input("Aaron Start Age", 17, 25, int(inp["k1_start"]))
+    inp["k1_end"] = st.number_input("Aaron End Age", 18, 30, int(inp["k1_end"]))
+    inp["k1_cost"] = st.number_input("Aaron Tuition", value=float(inp["k1_cost"]))
+    st.caption("Alvin (Age Offset: -30)")
+    inp["k2_start"] = st.number_input("Alvin Start Age", 17, 25, int(inp["k2_start"]))
+    inp["k2_end"] = st.number_input("Alvin End Age", 18, 30, int(inp["k2_end"]))
+    inp["k2_cost"] = st.number_input("Alvin Tuition", value=float(inp["k2_cost"]))
+
+with sb.expander("💵 Income & Household (LHS)", expanded=False):
+    inp["hp"] = st.number_input("Husband Salary", value=float(inp.get("hp", 145000)))
+    inp["yp"] = st.number_input("Your Salary", value=float(inp.get("yp", 110000)))
+    inp["ew"] = st.number_input("Working Spend", value=float(inp.get("ew", 150000)))
+    inp["er"] = st.number_input("Retire Spend", value=float(inp.get("er", 120000)))
 
 # --- 3. MATH ENGINE ---
 @st.cache_data
@@ -120,26 +120,29 @@ p5, p50, p95 = np.percentile(nw_mat, [5, 50, 95], axis=0)
 med_path = pd.DataFrame(results[len(results)//2])
 
 # --- 4. RHS DASHBOARD ---
-st.title("🛡️ Legacy Master v27.0")
+st.title("🛡️ Legacy Master v28.0")
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Median Estate", f"${p50[-1]:,.0f}"); m2.metric("Success Rate", f"{(nw_mat[:,-1]>0).mean()*100:.1f}%"); m3.metric("Worst Case (5%)", f"${p5[-1]:,.0f}"); m4.metric("Simulations", n_sims)
 
-st.plotly_chart(go.Figure([
-    go.Scatter(x=med_path["Age"], y=p95, line_dict=dict(width=0), showlegend=False),
-    go.Scatter(x=med_path["Age"], y=p5, fill='tonexty', fillcolor='rgba(16,185,129,0.1)', name="90% Risk Band"),
-    go.Scatter(x=med_path["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median NW")
-]).update_layout(title="Net Worth Probability & Amortization Pay-down", template="plotly_dark"), use_container_width=True)
+# Prob Chart
+fig_nw = go.Figure()
+fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p95, line=dict(width=0), showlegend=False))
+fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p5, fill='tonexty', fillcolor='rgba(16,185,129,0.1)', name="90% Risk Band"))
+fig_nw.add_trace(go.Scatter(x=med_path["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median NW"))
+st.plotly_chart(fig_nw.update_layout(title="Net Worth Probability & Mortgage Pay-down", template="plotly_dark"), use_container_width=True)
 
+# CF Chart
 fig_cf = go.Figure()
 for col, color, name in [("Sal", "#34d399", "Income"), ("RE_NOI", "#60a5fa", "Rent (Net P&I)"), ("Tax", "#f87171", "Taxes"), ("Spend", "#fbbf24", "Expenses/College"), ("Draw", "#8b5cf6", "401k Draw")]:
     fig_cf.add_trace(go.Bar(x=med_path["Age"], y=med_path[col], name=name, marker_color=color))
 fig_cf.add_trace(go.Scatter(x=med_path["Age"], y=med_path["Sal"]+med_path["RE_NOI"]+med_path["Tax"]+med_path["Spend"], name="Net Flow", line=dict(color="white", width=2, dash='dot')))
-st.plotly_chart(fig_cf.update_layout(barmode='relative', title="Granular Cash Flow", template="plotly_dark"), use_container_width=True)
+st.plotly_chart(fig_cf.update_layout(barmode='relative', title="Annual Cash Flow", template="plotly_dark"), use_container_width=True)
 
+# Assets Chart
 fig_eq = go.Figure()
-fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["RE_Val"], name="RE Asset Value", marker_color="#1e40af"))
+fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["RE_Val"], name="RE Assets", marker_color="#1e40af"))
 fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["Liq"], name="Liquid Assets", marker_color="#047857"))
-fig_eq.add_trace(go.Scatter(x=med_path["Age"], y=med_path["NW"], name="Total Equity", line=dict(color="#fbbf24", width=3)))
+fig_eq.add_trace(go.Scatter(x=med_path["Age"], y=med_path["NW"], name="Total Net Worth", line=dict(color="#fbbf24", width=3)))
 st.plotly_chart(fig_eq.update_layout(barmode='stack', title="Asset Composition", template="plotly_dark"), use_container_width=True)
 
 st.download_button("📥 Save JSON", data=json.dumps(inp), file_name="scenario.json")
