@@ -48,4 +48,109 @@ with sb.expander("🏠 Real Estate Engine", expanded=True):
     for i, p in enumerate(inp["props"]):
         st.markdown(f"**Prop {i+1}**")
         p["v"] = st.number_input(f"Val {i+1}", value=float(p["v"]), key=f"v{i}")
-        p["l"]
+        p["l"] = st.number_input(f"Loan {i+1}", value=float(p["l"]), key=f"l{i}")
+        p["p_year"] = st.number_input(f"Yr Bought {i+1}", 1990, 2026, int(p.get("p_year", 2020)), key=f"py{i}")
+        p["r"] = st.number_input(f"Rent {i+1}", value=float(p["r"]), key=f"rent{i}")
+        c1, c2 = st.columns(2)
+        p["liq_active"] = c1.checkbox("Sell?", value=p.get("liq_active", True), key=f"la{i}")
+        p["liq_age"] = c2.number_input("Age", 45, 95, int(p.get("liq_age", 55)), key=f"lage{i}")
+
+with sb.expander("💵 Income & Retirement", expanded=True):
+    inp["hp"] = st.number_input("Husband Salary", value=float(inp["hp"]))
+    inp["hr"] = st.number_input("Husband Retire Age", value=int(inp["hr"]))
+    inp["yp"] = st.number_input("Your Salary", value=float(inp["yp"]))
+    inp["yr"] = st.number_input("Your Retire Age", value=int(inp["yr"]))
+    inp["ss"] = st.number_input("Social Security/yr", value=float(inp["ss"]))
+
+with sb.expander("🎓 Education Timing & Lifestyle", expanded=True):
+    st.subheader("Aaron (Age Offset: -32)")
+    c1, c2 = st.columns(2)
+    inp["k1_start"] = c1.number_input("Start Age (Aaron)", 17, 25, int(inp["k1_start"]))
+    inp["k1_end"] = c2.number_input("End Age (Aaron)", 18, 30, int(inp["k1_end"]))
+    inp["k1_cost"] = st.number_input("Aaron Tuition/yr", value=float(inp["k1_cost"]))
+    
+    st.subheader("Alvin (Age Offset: -30)")
+    c3, c4 = st.columns(2)
+    inp["k2_start"] = c3.number_input("Start Age (Alvin)", 17, 25, int(inp["k2_start"]))
+    inp["k2_end"] = c4.number_input("End Age (Alvin)", 18, 30, int(inp["k2_end"]))
+    inp["k2_cost"] = st.number_input("Alvin Tuition/yr", value=float(inp["k2_cost"]))
+    
+    st.markdown("---")
+    inp["ew"] = st.number_input("Working Lifestyle Spend", value=float(inp["ew"]))
+    inp["er"] = st.number_input("Retired Lifestyle Spend", value=float(inp["er"]))
+
+# --- 3. MATH ENGINE ---
+@st.cache_data
+def run_engine(p_in, sims, monte):
+    all_runs = []
+    for _ in range(sims):
+        cc, cd, cr = p_in["v_c"], p_in["v_d"], p_in["v_r"]
+        props = [pr.copy() for pr in p_in["props"]]
+        path = []
+        for age in range(p_in["ca"], p_in["ea"] + 1):
+            h = age - p_in["ca"]; yr = 2026 + h
+            market_return = np.random.normal(p_in["target_roi"], p_in["volatility"]) if monte else p_in["target_roi"]
+            re_val, re_eq, re_cf = 0, 0, 0
+            for pr in props:
+                if pr["v"] > 0:
+                    mi, mt = pr.get("rate", 0.045)/12, pr.get("term", 30)*12
+                    pmt_mo = pr["l"] * (mi * (1 + mi)**mt) / ((1 + mi)**mt - 1) if pr["l"] > 0 else 0
+                    mos_passed = (yr - pr.get("p_year", 2020)) * 12
+                    rem_bal = pr["l"] * ((1 + mi)**mt - (1 + mi)**max(0, mos_passed)) / ((1 + mi)**mt - 1) if mos_passed < mt else 0
+                    pmt_ann = (pmt_mo * 12) if mos_passed < mt else 0
+                    cv = pr["v"] * ((1 + pr.get("a", 0.03))**h)
+                    if age == pr.get("liq_age", 55) and pr.get("liq_active"):
+                        cc += (cv - rem_bal - (max(0, cv - pr.get("b", 1000000)) * p_in["cap_gains"])); pr["v"] = 0
+                    else:
+                        re_val += cv; re_eq += (cv - rem_bal)
+                        re_cf += (pr["r"]*12) - (cv*(p_in["p_tax"]+p_in["p_maint"])) - (pr["r"]*12*p_in["p_mgmt"]) - pmt_ann
+            sal = (p_in["hp"] if age < p_in["hr"] else 0) + (p_in["yp"] if age < p_in["yr"] else 0)
+            taxable = sal + max(0, re_cf) + (p_in["ss"] if age >= 67 else 0)
+            tax = taxable * (p_in["tax_work"] if sal > 0 else p_in["tax_ret"])
+            
+            # THE EDUCATION LOGIC
+            aaron_age, alvin_age = age - 32, age - 30
+            edu_spike = 0
+            if p_in["k1_start"] <= aaron_age <= p_in["k1_end"]: edu_spike += p_in["k1_cost"]
+            if p_in["k2_start"] <= alvin_age <= p_in["k2_end"]: edu_spike += p_in["k2_cost"]
+            
+            spend = (p_in["ew"] if (age < p_in["yr"] or age < p_in["hr"]) else p_in["er"]) + edu_spike
+            net_flow = (taxable - tax) - spend
+            draw = 0
+            if net_flow < 0:
+                gap = abs(net_flow); fc = min(cc, gap); cc -= fc; gap -= fc
+                if gap > 0: d = min(cd, gap/(1-p_in["tax_ret"])); cd -= d; draw = d
+            else: cc += net_flow
+            cd *= (1 + market_return); cc *= 1.02
+            path.append({"Age": age, "NW": cc+cd+cr+re_eq, "Sal": sal, "RE_NOI": re_cf, "Tax": -tax, "Spend": -spend, "Draw": draw, "RE_Val": re_val, "Liq": cc+cd+cr})
+        all_runs.append(path)
+    return all_runs
+
+results = run_engine(inp, n_sims, use_monte)
+nw_mat = np.array([[y["NW"] for y in path] for path in results])
+p5, p50, p95 = np.percentile(nw_mat, [5, 50, 95], axis=0)
+med_path = pd.DataFrame(results[len(results)//2])
+
+# --- 4. RHS DASHBOARD ---
+st.title("🛡️ Legacy Master v32.0")
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("Median Estate", f"${p50[-1]:,.0f}"); m2.metric("Success Rate", f"{(nw_mat[:,-1]>0).mean()*100:.1f}%"); m3.metric("Worst Case (5%)", f"${p5[-1]:,.0f}"); m4.metric("Simulations", n_sims)
+
+st.plotly_chart(go.Figure([
+    go.Scatter(x=med_path["Age"], y=p95, line=dict(width=0), showlegend=False),
+    go.Scatter(x=med_path["Age"], y=p5, fill='tonexty', fillcolor='rgba(239, 68, 68, 0.15)', name="Downside Risk (5%)"),
+    go.Scatter(x=med_path["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median Estate Path")
+]).update_layout(title="Wealth Probability & Education Impact", template="plotly_dark"), use_container_width=True)
+
+fig_cf = go.Figure()
+for col, color, name in [("Sal", "#34d399", "Inflow"), ("RE_NOI", "#60a5fa", "Rent (Net)"), ("Tax", "#f87171", "Taxes"), ("Spend", "#fbbf24", "Expenses/Education"), ("Draw", "#8b5cf6", "401k Withdrawals")]:
+    fig_cf.add_trace(go.Bar(x=med_path["Age"], y=med_path[col], name=name, marker_color=color))
+st.plotly_chart(fig_cf.update_layout(barmode='relative', title="Annual Cash Flow with Tuition Spikes", template="plotly_dark"), use_container_width=True)
+
+fig_eq = go.Figure()
+fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["RE_Val"], name="RE Market Value", marker_color="#1e40af"))
+fig_eq.add_trace(go.Bar(x=med_path["Age"], y=med_path["Liq"], name="Liquid Assets", marker_color="#047857"))
+fig_eq.add_trace(go.Scatter(x=med_path["Age"], y=med_path["NW"], name="Total Equity", line=dict(color="#fbbf24", width=3)))
+st.plotly_chart(fig_eq.update_layout(barmode='stack', title="Asset Composition", template="plotly_dark"), use_container_width=True)
+
+st.download_button("📥 Save JSON", data=json.dumps(inp), file_name="scenario.json")
