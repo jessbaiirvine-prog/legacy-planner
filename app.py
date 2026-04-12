@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 
-st.set_page_config(layout="wide", page_title="Legacy Master 42.0", page_icon="📈")
+st.set_page_config(layout="wide", page_title="Legacy Master 43.0", page_icon="📈")
 
 # --- 1. GLOBAL DEFAULTS & DEEP SCHEMA MIGRATION ---
 DEFAULT_PROP = {
@@ -174,8 +174,9 @@ def run_simulation(p_in):
             
             total_outflow = inflated_spend + edu_cost + effective_tax
             net_cash_flow = gross_taxable - total_outflow
+            organic_net = (income_h + income_y + ss_income + annual_re_noi) - (inflated_spend + edu_cost + effective_tax)
             
-            draw_from_ret = 0
+            from_cash = 0; from_brok = 0; draw_from_ret = 0
             if net_cash_flow < 0:
                 deficit = abs(net_cash_flow)
                 from_cash = min(cash, deficit)
@@ -196,14 +197,16 @@ def run_simulation(p_in):
             
             path.append({
                 "Age": age, "Year": current_year, "NW": cash + brok + ret + total_re_eq + p_in["v_residence"],
-                "Liq": cash + brok + ret, "RE_Eq": total_re_eq, "NOI": annual_re_noi, 
-                "Mortgage": annual_mortgage, "Draw": draw_from_ret, "Spend": inflated_spend, "Tax": effective_tax
+                "Liq": cash + brok + ret, "RE_Eq": total_re_eq, "NOI": annual_re_noi, "Mortgage": annual_mortgage, 
+                "Draw": draw_from_ret, "Spend": inflated_spend, "Tax": effective_tax, "Edu": edu_cost,
+                "Salary": income_h + income_y, "SS": ss_income, "Organic_Net": organic_net,
+                "Total_Draw": from_cash + from_brok + draw_from_ret
             })
         results.append(path)
     return results
 
 # --- 4. RHS DASHBOARD ---
-st.title("🛡️ Legacy Master v42.0: Wealth & Estate Advisory")
+st.title("🛡️ Legacy Master v43.0: Wealth & Estate Advisory")
 
 sim_data = run_simulation(inp)
 nw_curves = np.array([[yr["NW"] for yr in run] for run in sim_data])
@@ -224,29 +227,45 @@ st.plotly_chart(go.Figure([
     go.Scatter(x=median_run["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median Forecast")
 ]).update_layout(title="Estate Value Probability (Net Worth)", template="plotly_dark", hovermode="x unified"), use_container_width=True)
 
-# Chart 2: Real Estate Deep Dive (Restored)
+# Chart 2: Real Estate Deep Dive
 st.header("🏢 Real Estate Portfolio Health")
 re_fig = go.Figure()
 re_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["NOI"], name="Net Rental Cash Flow", marker_color="#34d399"))
 re_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Mortgage"], name="Mortgage Debt Service", marker_color="#f87171"))
 st.plotly_chart(re_fig.update_layout(barmode='relative', title="Net Rent vs Debt Service", template="plotly_dark"), use_container_width=True)
 
-# Chart 3: Cash Flow Audit (Restored)
-st.header("📋 Cash Flow & Liquidity Trail")
+# Chart 3: Area Line Cash Flow (Retained from v42)
+st.header("📋 Baseline Liquidity Trail")
 cf_fig = go.Figure()
 for col, color, lbl in [("Spend", "#fbbf24", "Expenses (Inflated)"), ("Tax", "#ef4444", "Taxes"), ("Draw", "#8b5cf6", "401k/IRA Withdrawals")]:
     cf_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run[col], name=lbl, fill='tozeroy', line=dict(color=color)))
 st.plotly_chart(cf_fig.update_layout(title="Annual Outflows & Liquidity Relief", template="plotly_dark"), use_container_width=True)
 
-# Full Diagnostic Advisory (Restored)
+# Chart 4: NEW - Detailed Inflow vs Outflow Bar Chart with Net Cash Flow Line
+st.header("📊 Comprehensive Inflow vs Outflow")
+io_fig = go.Figure()
+# Inflows
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["Salary"], name="Salaries", marker_color="#10b981"))
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["SS"], name="Social Security", marker_color="#3b82f6"))
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.maximum(0, median_run["NOI"]), name="Positive RE Income", marker_color="#06b6d4"))
+# Outflows (Negative for Diverging Stack)
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Spend"] - median_run["Edu"], name="Living & Edu Exp", marker_color="#fbbf24"))
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Tax"], name="Taxes", marker_color="#ef4444"))
+io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.minimum(0, median_run["NOI"]), name="Negative RE Losses", marker_color="#f97316"))
+# Net Cash Flow Line
+io_fig.add_trace(go.Scatter(x=median_run["Age"], y=median_run["Organic_Net"], name="Net Cash Flow", line=dict(color="white", width=3, dash="dot")))
+
+st.plotly_chart(io_fig.update_layout(barmode='relative', title="Inflow vs Outflow with Net Cash Flow Trajectory", template="plotly_dark", hovermode="x unified"), use_container_width=True)
+
+# Full Diagnostic Advisory
 st.divider()
 st.header("🧐 Strategic Diagnostic Advisory")
 c1, c2 = st.columns(2)
 with c1:
     st.subheader("🚩 Crisis Periods")
-    crisis = median_run[median_run["Draw"] > 0]
+    crisis = median_run[median_run["Organic_Net"] < 0]
     if not crisis.empty:
-        st.error(f"Drawdown Detected: Ages {crisis['Age'].min()} to {crisis['Age'].max()}")
+        st.error(f"Negative Organic Cash Flow Detected: Ages {crisis['Age'].min()} to {crisis['Age'].max()}")
         st.write("During this period, your organic cash flow (salaries + rent + SS) is insufficient to cover expenses, taxes, and tuition. The engine is pulling liquidity from your cash, brokerage, and tax-deferred accounts.")
     else:
         st.success("✅ Portfolio is self-funding. Your cash flow completely covers your expenses without drawing down principal.")
@@ -257,4 +276,4 @@ with c2:
         st.warning("**Sequence of Returns Risk:** In 5% of our market simulations, you exhaust your liquid assets. Consider raising your cash reserve or reducing initial retirement spending.")
     st.info("**Mortgage Burn-off:** When your 30-year terms expire, your required debt service drops significantly, creating a substantial monthly surplus. Consider identifying specific reinvestment vehicles for this period.")
 
-st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v42.json")
+st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v43.json")
