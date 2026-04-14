@@ -4,24 +4,24 @@ import plotly.graph_objects as go
 import numpy as np
 import json
 
-st.set_page_config(layout="wide", page_title="Legacy Master 44.0", page_icon="📈")
+st.set_page_config(layout="wide", page_title="Legacy Master 45.0", page_icon="📈")
 
 # --- 1. GLOBAL DEFAULTS & DEEP SCHEMA MIGRATION ---
 DEFAULT_PROP = {
-    "v": 1000000.0, "b": 800000.0, "l": 600000.0, "p_year": 2020, "term": 30, "rate": 0.045, 
-    "rent": 5000.0, "a": 0.03, "tax_rate": 0.012, "ins": 1500.0, "maint": 0.01, "mgmt": 0.08,
-    "liq_age": 65, "liq_active": False
+    "v": 1500000.0, "b": 1000000.0, "l": 800000.0, "p_year": 2024, "term": 30, "rate": 0.065, 
+    "rent": 8500.0, "a": 0.04, "tax_rate": 0.012, "ins": 2500.0, "maint": 0.01, "mgmt": 0.05,
+    "liq_age": 65, "liq_active": False, "is_california": True, "is_nnn": False
 }
 
 DEFAULTS = {
-    "v_cash": 200000.0, "v_brokerage": 500000.0, "v_401k": 1200000.0, "v_residence": 1500000.0,
-    "tax_work": 0.30, "tax_ret": 0.20, "cap_gains": 0.20, "inflation": 0.025,
-    "target_roi": 0.07, "volatility": 0.15, "cash_roi": 0.035,
+    "v_cash": 250000.0, "v_brokerage": 600000.0, "v_401k": 1500000.0, "v_residence": 2000000.0,
+    "tax_work": 0.35, "tax_ret": 0.25, "cap_gains": 0.20, "inflation": 0.03, "salary_growth": 0.035,
+    "target_roi": 0.08, "volatility": 0.15, "cash_roi": 0.04,
     "props": [DEFAULT_PROP.copy()],
-    "k1_s_yr": 2038, "k1_e_yr": 2042, "k1_cost": 50000.0, 
-    "k2_s_yr": 2040, "k2_e_yr": 2044, "k2_cost": 50000.0,
-    "ca": 42, "ea": 95, "hp": 145000.0, "hr": 58, "yp": 110000.0, "yr": 55, 
-    "ew": 150000.0, "er": 120000.0, "ss": 85000.0, "n_sims": 500
+    "k1_s_yr": 2038, "k1_e_yr": 2042, "k1_cost": 65000.0, 
+    "k2_s_yr": 2040, "k2_e_yr": 2044, "k2_cost": 65000.0,
+    "ca": 42, "ea": 95, "hp": 200000.0, "hr": 60, "yp": 250000.0, "yr": 55, 
+    "ew": 180000.0, "er": 140000.0, "ss": 90000.0, "n_sims": 500
 }
 
 if "inputs" not in st.session_state:
@@ -46,12 +46,14 @@ if uploaded_file:
     for k, v in new_data.items(): inp[k] = v
     st.rerun()
 
-with sb.expander("🎲 Market Risk & Simulation", expanded=True):
+with sb.expander("🎲 Market Risk & Macro", expanded=True):
     inp["n_sims"] = st.slider("Monte Carlo Iterations", 100, 2000, int(inp["n_sims"]))
     inp["target_roi"] = st.slider("Equities ROI %", 0.0, 15.0, float(inp["target_roi"]*100))/100
     inp["volatility"] = st.slider("Volatility %", 0.0, 40.0, float(inp["volatility"]*100))/100
     inp["cash_roi"] = st.slider("Cash Yield %", 0.0, 8.0, float(inp["cash_roi"]*100))/100
-    inp["inflation"] = st.slider("Inflation %", 0.0, 10.0, float(inp["inflation"]*100))/100
+    st.markdown("---")
+    inp["inflation"] = st.slider("Expense Inflation %", 0.0, 10.0, float(inp["inflation"]*100))/100
+    inp["salary_growth"] = st.slider("Salary Growth %", 0.0, 10.0, float(inp["salary_growth"]*100))/100
 
 with sb.expander("💰 Balance Sheet", expanded=True):
     inp["v_401k"] = st.number_input("401k/IRA Total", value=float(inp["v_401k"]), step=10000.0)
@@ -71,8 +73,11 @@ with sb.expander("🏠 Real Estate Assets", expanded=True):
         p["l"] = st.number_input(f"Loan Balance ##{i+1}", value=float(p["l"]), key=f"l{i}")
         p["rent"] = st.number_input(f"Monthly Rent ##{i+1}", value=float(p["rent"]), key=f"r{i}")
         
-        with st.expander(f"⚙️ P&L Details ##{i+1}"):
+        with st.expander(f"⚙️ Details & Leases ##{i+1}"):
             c1, c2 = st.columns(2)
+            p["is_california"] = c1.checkbox("Prop 13 Tax Cap", value=p.get("is_california", True), key=f"ca{i}")
+            p["is_nnn"] = c2.checkbox("NNN Lease (Tenant pays OpEx)", value=p.get("is_nnn", False), key=f"nnn{i}")
+            
             p["rate"] = c1.number_input("Mortgage Rate %", 0.0, 15.0, float(p["rate"]*100), key=f"rt{i}")/100
             p["term"] = c2.number_input("Loan Term (Yrs)", 5, 40, int(p["term"]), key=f"tm{i}")
             p["tax_rate"] = c1.number_input("Prop Tax Rate %", 0.0, 4.0, float(p["tax_rate"]*100), key=f"tx{i}")/100
@@ -85,8 +90,8 @@ with sb.expander("🏠 Real Estate Assets", expanded=True):
 
 with sb.expander("💵 Income, SS & Education", expanded=True):
     st.markdown("**Employment Income**")
-    inp["hp"], inp["hr"] = st.number_input("Husband Gross Salary", value=float(inp["hp"])), st.number_input("Husband Retire Age", value=int(inp["hr"]))
-    inp["yp"], inp["yr"] = st.number_input("Your Gross Salary", value=float(inp["yp"])), st.number_input("Your Retire Age", value=int(inp["yr"]))
+    inp["hp"], inp["hr"] = st.number_input("Yichi's Gross Salary", value=float(inp["hp"])), st.number_input("Yichi's Retire Age", value=int(inp["hr"]))
+    inp["yp"], inp["yr"] = st.number_input("Lu's Gross Salary", value=float(inp["yp"])), st.number_input("Lu's Retire Age", value=int(inp["yr"]))
     
     st.markdown("**Social Security**")
     inp["ss"] = st.number_input("Est. Total SS/yr", value=float(inp["ss"]))
@@ -126,7 +131,7 @@ def run_simulation(p_in):
                     mi, mt = pr["rate"] / 12, pr["term"] * 12
                     pmt_mo = pr["l"] * (mi * (1 + mi)**mt) / ((1 + mi)**mt - 1) if pr["l"] > 0 else 0
                     
-                    mos_passed = (current_year - pr.get("p_year", 2020)) * 12
+                    mos_passed = (current_year - pr.get("p_year", 2024)) * 12
                     rem_bal = pr["l"] * ((1 + mi)**mt - (1 + mi)**mos_passed) / ((1 + mi)**mt - 1) if mos_passed < mt else 0
                     mortgage_ann = pmt_mo * 12 if mos_passed < mt else 0
                     
@@ -141,10 +146,22 @@ def run_simulation(p_in):
                         total_re_val += cur_v
                         total_re_eq += (cur_v - rem_bal)
                         
-                        # BUG FIX: Inflating rent to match expense inflation
+                        # Apply Expense Inflation to Rent
                         inflated_rent = (pr["rent"] * 12) * ((1 + p_in["inflation"])**year_idx)
                         
-                        ops_expenses = (cur_v * pr["tax_rate"]) + pr["ins"] + (cur_v * pr["maint"]) + (inflated_rent * pr["mgmt"])
+                        # California Prop 13 Logic: Tax Assessed Value capped at 2% growth
+                        if pr.get("is_california", True):
+                            taxable_val = pr["v"] * ((1 + min(pr["a"], 0.02))**year_idx)
+                        else:
+                            taxable_val = cur_v
+                            
+                        # OpEx Calculation based on NNN Lease Status
+                        if pr.get("is_nnn", False):
+                            # Tenant pays taxes, insurance, and maintenance. Landlord only pays management.
+                            ops_expenses = inflated_rent * pr["mgmt"]
+                        else:
+                            ops_expenses = (taxable_val * pr["tax_rate"]) + pr["ins"] + (cur_v * pr["maint"]) + (inflated_rent * pr["mgmt"])
+                            
                         prop_noi = inflated_rent - ops_expenses
                         prop_ncf = prop_noi - mortgage_ann
                         
@@ -152,11 +169,11 @@ def run_simulation(p_in):
                         annual_mortgage += mortgage_ann
                         annual_ncf += prop_ncf
 
-            income_h = p_in["hp"] if age < p_in["hr"] else 0
-            income_y = p_in["yp"] if age < p_in["yr"] else 0
+            # Apply Salary Growth (Compounding)
+            income_h = p_in["hp"] * ((1 + p_in["salary_growth"])**year_idx) if age < p_in["hr"] else 0
+            income_y = p_in["yp"] * ((1 + p_in["salary_growth"])**year_idx) if age < p_in["yr"] else 0
             ss_income = p_in["ss"] if age >= 67 else 0
             
-            # Taxed on NOI (before debt service), standard tax logic
             gross_taxable = income_h + income_y + max(0, annual_true_noi) + ss_income
             effective_tax = gross_taxable * (p_in["tax_work"] if (income_h + income_y) > 0 else p_in["tax_ret"])
             
@@ -167,7 +184,6 @@ def run_simulation(p_in):
             base_spend = (p_in["ew"] if (age < p_in["hr"] or age < p_in["yr"]) else p_in["er"])
             inflated_spend = base_spend * ((1 + p_in["inflation"])**year_idx)
             
-            # Cash flow utilizes NCF (after debt service)
             total_outflow = inflated_spend + edu_cost + effective_tax
             net_cash_flow = (income_h + income_y + ss_income + annual_ncf) - total_outflow
             
@@ -199,7 +215,7 @@ def run_simulation(p_in):
     return results
 
 # --- 4. RHS DASHBOARD ---
-st.title("🛡️ Legacy Master v44.0: Corrected Cash Flow")
+st.title("🛡️ Legacy Master v45.0: The Reality Engine")
 
 sim_data = run_simulation(inp)
 nw_curves = np.array([[yr["NW"] for yr in run] for run in sim_data])
@@ -219,8 +235,8 @@ st.plotly_chart(go.Figure([
     go.Scatter(x=median_run["Age"], y=p50, line=dict(color="#10b981", width=4), name="Median Forecast")
 ]).update_layout(title="Estate Value Probability (Net Worth)", template="plotly_dark", hovermode="x unified"), use_container_width=True)
 
-# Chart 2: Real Estate Deep Dive (Now mathematically correct CRE definitions)
-st.header("🏢 Real Estate Portfolio Health (NOI vs Debt)")
+# Chart 2: Real Estate Deep Dive 
+st.header("🏢 Commercial/Residential Cash Flow (NOI vs Debt)")
 re_fig = go.Figure()
 re_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["NOI"], name="True NOI (Rent - OpEx)", marker_color="#34d399"))
 re_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Mortgage"], name="Debt Service", marker_color="#f87171"))
@@ -239,7 +255,6 @@ st.header("📊 Comprehensive Inflow vs Outflow")
 io_fig = go.Figure()
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["Salary"], name="Salaries", marker_color="#10b981"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=median_run["SS"], name="Social Security", marker_color="#3b82f6"))
-# Now using actual NCF to show true real estate cash contribution or drag
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=np.maximum(0, median_run["NCF"]), name="Positive RE NCF", marker_color="#06b6d4"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Spend"] - median_run["Edu"], name="Living & Edu Exp", marker_color="#fbbf24"))
 io_fig.add_trace(go.Bar(x=median_run["Age"], y=-median_run["Tax"], name="Taxes", marker_color="#ef4444"))
@@ -251,11 +266,11 @@ st.divider()
 st.header("🧐 Strategic Diagnostic Advisory")
 c1, c2 = st.columns(2)
 with c1:
-    st.subheader("🚩 Crisis Periods")
+    st.subheader("🚩 Liquidity Drawdown Periods")
     crisis = median_run[median_run["Organic_Net"] < 0]
     if not crisis.empty:
         st.error(f"Negative Organic Cash Flow Detected: Ages {crisis['Age'].min()} to {crisis['Age'].max()}")
-        st.write("During this period, your organic cash flow (salaries + RE NCF + SS) is insufficient to cover expenses, taxes, and tuition. The engine is pulling liquidity from your cash, brokerage, and tax-deferred accounts.")
+        st.write("During this period, organic cash flow (salaries + RE NCF + SS) is insufficient to cover inflated expenses, taxes, and tuition. The engine is successfully pulling liquidity from your cash, brokerage, and tax-deferred accounts.")
     else:
         st.success("✅ Portfolio is self-funding. Your cash flow completely covers your expenses without drawing down principal.")
 
@@ -263,6 +278,6 @@ with c2:
     st.subheader("💡 Optimization Opportunities")
     if p5[-1] < 0:
         st.warning("**Sequence of Returns Risk:** In 5% of our market simulations, you exhaust your liquid assets. Consider raising your cash reserve or reducing initial retirement spending.")
-    st.info("**Mortgage Burn-off:** When your 30-year terms expire, your required debt service drops significantly, creating a substantial monthly surplus. Consider identifying specific reinvestment vehicles for this period.")
+    st.info("**Mortgage Burn-off:** When your 30-year terms expire, required debt service drops to zero, creating a massive monthly surplus. Consider mapping out reinvestment vehicles for this capital block.")
 
-st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v44.json")
+st.download_button("📥 Export Simulation Data (JSON)", data=json.dumps(inp), file_name="legacy_v45_reality_engine.json")
