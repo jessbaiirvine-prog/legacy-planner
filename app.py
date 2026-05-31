@@ -934,7 +934,3 @@ with tab5:
             '</div></div>',
             unsafe_allow_html=True
         )
-3 reduce your taxable RMD burden.'
-            '</div></div>',
-            unsafe_allow_html=True
-        )
